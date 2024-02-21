@@ -1,17 +1,42 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.optim.lr_scheduler import LambdaLR
 from torch.distributions import Categorical
 from torch.autograd.functional import hessian
 from copy import deepcopy
 import os
 import gym
+from torch.utils.tensorboard import SummaryWriter
+writer = SummaryWriter()
 
 
-GAMMA_ACTOR = .003
-GAMMA_CRITIC = .009
-TRACE_DECAY = .8
+ACTOR_START_GAMMA = .8
+CRITIC_START_GAMMA = .8
+
+#For both decays .5 < decay < 1
+#And critic decay < actor decay
+ACTOR_DECAY = .9
+CRITIC_DECAY = .8
+
+ACTOR_GAMMA = lambda epoch: 1 / ((epoch + 1) ** ACTOR_DECAY)
+CRITIC_GAMMA = lambda epoch: 1/ ((epoch + 1) ** CRITIC_DECAY)
+
+TRACE_DECAY = .9
 C = 1.2 #Some constant greater than 0
+
+class Gamma:
+
+    def __init__(self, start : float, update : 'update_func') -> None:
+        self._iterations = 0
+        self._start = start
+        self._update = update
+
+    def __call__(self) -> float:
+        gamma = self._start * self._update(self._iterations)
+        self._iterations += 1
+        return gamma
+
 
 class Actor(nn.Module):
 
@@ -22,7 +47,7 @@ class Actor(nn.Module):
         self._hidden_size = 24
         self.features = nn.Sequential(
                                     nn.Linear(input_size, self._hidden_size),
-                                   # nn.ReLU(),
+                                    #nn.ReLU(),
                                     #nn.Linear(self.hidden_size, self.parameter_size),
                                     nn.ReLU(),
                                     nn.Linear(self._hidden_size, output_size))
@@ -30,21 +55,32 @@ class Actor(nn.Module):
         self.parameter_size = len(self.score_function(torch.rand(self.input_size))[0])
         self._save = save
         
-    def forward(self, x) -> torch.Tensor:
-        probs =  nn.functional.softmax(self.features(x), dim=0)
-        return probs + torch.full((self.output_size,), .001) #Add small value so never zero
+    def forward(self, state : torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        
+        _, dist = self._prob_distribution(state)
+        
+        action = dist.sample()
+        log_prob = dist.log_prob(action)
+
+        return action, log_prob
+        
+        
     
     def score_function(self, state : torch.Tensor):
         """Calculate psi w.r.t the parameters of the nn.
         Each index of the returned tensor corresponds to the action."""
-        grad_reset = deepcopy(optim.Adam(self.parameters())) #Will be used only to reset the gradients in the network
+        grad_reset = deepcopy(optim.SGD(self.parameters())) #Will be used only to reset the gradients in the network
         
-        output = torch.log(self(state))
+        _, dist = self._prob_distribution(state)
+
+        log_probs = torch.Tensor([])
+        for i in range(self.output_size):
+            log_probs = torch.cat((log_probs, dist.log_prob(torch.Tensor([i]))), dim = 0)
 
         score_functions = torch.Tensor([])
         for i in range(self.output_size):
             grad_reset.zero_grad()
-            output[i].backward(retain_graph=True)
+            log_probs[i].backward(retain_graph=True)
             gradients = torch.Tensor([])
 
             for param in self.parameters():
@@ -83,6 +119,16 @@ class Actor(nn.Module):
 
         torch.save(self.state_dict(), file_name)
 
+    def _prob_distribution(self, state : torch.Tensor) -> tuple[torch.Tensor, Categorical]:
+        """Returns a a tensor of the probabilites and its distribution"""
+
+        probs =  nn.functional.softmax(self.features(state), dim=0)
+        dist = Categorical(probs)
+
+        return probs, dist
+
+        
+
 
 class Critic:
 
@@ -93,6 +139,7 @@ class Critic:
         self.parameters = torch.rand(self.feature_size)
         self.estimate_average_cost = 0
         self.trace = EligibilityTrace(self)
+        self._gamma = Gamma(CRITIC_START_GAMMA, CRITIC_GAMMA)
 
     def features(self, state : torch.Tensor) -> torch.Tensor:
         """Returns the features of the critic which include psi (actors score function).
@@ -111,16 +158,11 @@ class Critic:
 
         return q_tensor
 
-    def update_parameters(self, td : float) -> None:
-        """Will update the paramters of the critic according to papers formula"""
-        self.parameters = self.parameters + GAMMA_CRITIC * td * self.trace.get_trace()
-
-    def update_average_cost(self, cost : float) -> None:
-        """The given cost is given by the environment"""
-        self.estimate_average_cost = self.estimate_average_cost + GAMMA_CRITIC * (cost - self.estimate_average_cost)
-
-    def update_trace(self, state : torch.Tensor, action : int) -> None:
-        "Should be done at the end of each episode"
+    def update_parameters(self, td : float, state : torch.Tensor, action : int, cost : float) -> None:
+        """Will update the paramters of the critic according to papers formulas"""
+        cur_gamma = self._gamma()
+        self.parameters = self.parameters + cur_gamma * td * self.trace.get_trace()
+        self.estimate_average_cost = self.estimate_average_cost + cur_gamma * (cost - self.estimate_average_cost)
         self.trace.update_trace(state, action)
 
     def reset(self) -> None:
@@ -152,22 +194,24 @@ class Agent:
     def __init__(self, gm : gym.Env, input_size : int, output_size : int) -> None:
         self._actor = Actor(input_size, output_size)
         self._critic = Critic(self._actor)
-        self._actor_optimizer = optim.Adam(self._actor.parameters(), GAMMA_ACTOR)
+        self._actor_optimizer = optim.SGD(self._actor.parameters(), ACTOR_START_GAMMA)
+        self._lr_scheduluar = LambdaLR(self._actor_optimizer, ACTOR_GAMMA)
         self._gm = gm
-        self._num_critic_updates = 0
+        self._updates = 0
 
     def get_state(self) -> torch.Tensor:
         """Get state from environment"""
         return torch.Tensor(self._gm.get_state())
     
-    def get_action(self, state : torch.Tensor) -> int:
-        """Returns an integer which will correspond to what action to take"""
+    def get_action(self, state : torch.Tensor) -> tuple[int, torch.Tensor]:
+        """Returns an integer which will correspond to what action to take and the log probability of the action"""
         #nan is in network due to backprop?
-        probs = self._actor(state)
-        m = Categorical(probs)
-        return int(m.sample())
+
+        action, log_prob = self._actor(state)
+        
+        return int(action), log_prob
     
-    def update(self, state : torch.Tensor, action : int, next_state : torch.Tensor, next_action : int, reward : float) -> None:
+    def update(self, next_log_prob : torch.Tensor, state : torch.Tensor, action : int, next_state : torch.Tensor, next_action : int, reward : float) -> None:
         """Will update the actor and critic parameters"""
         q_next = self._critic.forward(next_state)
         q_current = self._critic.forward(state)
@@ -175,23 +219,24 @@ class Agent:
 
         #Critic update
         td = float(cost - self._critic.estimate_average_cost + q_next[next_action] - q_current[action])
+        self._critic.update_parameters(td, next_state, next_action, cost)
+        writer.add_scalar('Critic td', td, self._updates)
 
-        self._critic.update_parameters(td)
-        self._num_critic_updates += 1
-        
-        self._critic.update_average_cost(cost)
-        self._critic.update_trace(next_state, next_action)
-        
         #Actor update
         t = C / (1 + self._critic.parameters.norm())            
 
-        total_cost = t * float(q_next[next_action]) * torch.log(self._actor(next_state)[next_action]) #TODO When model gives prob as 0, it results in nan values to be propogated in network
+        total_cost = t * float(q_next[next_action]) * next_log_prob #TODO When model gives prob as 0, it results in nan values to be propogated in network
+        
+        writer.add_scalar('Actor total cost', total_cost, self._updates)
+        
         self._actor_optimizer.zero_grad()
         total_cost.backward()
         self._actor_optimizer.step()
 
-        self._num_critic_updates = 0
-    
+        self._lr_scheduluar.step()
+        writer.flush()
+        self._updates += 1
+
     def reset(self) -> torch.Tensor:
         """Resets the environment and other parameters of agent and returns the new start state"""
         state =self._gm.reset()
@@ -202,21 +247,28 @@ class Agent:
 
 def train(agent : Agent, *, epochs : int = None) -> Agent:
     state = agent.reset()
-    action = agent.get_action(state)
+    action, _ = agent.get_action(state)
     episodes = 0
 
+    total_reward = 0
     while True:
         next_state, reward, done, _, _ = agent._gm.step(action)
         next_state = torch.Tensor(next_state)
-        new_action = agent.get_action(torch.Tensor(next_state))
+        new_action, next_log_prob = agent.get_action(torch.Tensor(next_state))
 
-        agent.update(state, action, next_state, new_action, reward)
+        total_reward += reward
+
+        agent.update(next_log_prob, state, action, next_state, new_action, reward)
 
         if done:
-            state = agent.reset()
-            agent.reset()
+            writer.add_scalar('Total Reward', total_reward, episodes)
+            writer.flush()
             print(episodes)
+
+            state = agent.reset()
             episodes += 1
+            total_reward = 0
+            action, _ = agent.get_action(state)
             if episodes == epochs:
                 return agent
 
