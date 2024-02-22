@@ -4,10 +4,8 @@ from torch import Tensor
 import torch.optim as optim
 from torch.distributions import MultivariateNormal
 from collections import namedtuple
+from copy import deepcopy
 
-V_HIDDEN_LAYER = 12
-Q_HIDDEN_SIZE = 12
-ACTOR_HIDDEN_SIZE = 12
 STEP_V = .01
 STEP_Q = .01
 STEP_ACTOR = .01
@@ -23,19 +21,21 @@ Transition = namedtuple('Transition', ['state', 'action', 'next_state', 'next_ac
 class BaseNN(nn.Module):
     """Base class for constructing NNs"""
 
-    def __init__(self, input_size : int,  outpute_size : int, hidden_size : int) -> None:
+    def __init__(self, input_size : int,  outpute_size : int, hidden_size : int = 2) -> None:
         super().__init__()
         self.input_size = input_size
         self.output_size = outpute_size
-        self.hidden_size = hidden_size
+        self._hidden_size = hidden_size
 
-        self._layers = nn.Sequential(
-                                nn.Linear(self.input_size, self.hidden_size),
+        self.layers = nn.Sequential(
+                                nn.Linear(self.input_size, self._hidden_size),
                                 nn.ReLU(),
-                                nn.Linear(self.hidden_size, self.output_size))
+                                nn.Linear(self._hidden_size, self._hidden_size),
+                                nn.ReLU(),
+                                nn.Linear(self._hidden_size, self.output_size))
 
     def forward(self, x : Tensor) -> Tensor:
-        return self._layers(x)
+        return self.layers(x)
     
 
 class ValueFunction(BaseNN):
@@ -107,25 +107,29 @@ class QFunction:
         return [self._q1, self._q2]
 
 
-class Actor(nn.Module):
+class Actor(BaseNN):
     """Actor updated according to equation 13"""
 
-    def __init__(self, input_size, output_size, q_func : QFunction) -> None:
-        super().__init__()
-        self._hidden1 = nn.Linear(input_size, 2)
-        self._hidden2 = nn.Linear(2, 3)
-        self._mean = nn.Linear(3, output_size)
-        self._std = nn.Linear(3, output_size)
+    def __init__(self, input_size : int, output_size : int) -> None:
+        super().__init__(input_size, output_size * 2) #Needs to be twice as we need to get mean and covar vectors
+        self.real_output_size = output_size
+
+        #May need to pick the random numbers differently
+        mean = torch.randn(self.real_output_size) 
+        varience = float(torch.rand(1)) 
+
+        covar = varience * torch.eye(self.real_output_size)
+        self._s_dist = MultivariateNormal(mean, covar)
     
     def forward(self, x : Tensor) -> tuple[Tensor, Tensor]:
         
-        mean, std = self._forward_gaussian(x)
-        covar = torch.pow(torch.diag(std), 2) #Would defining the network to give std then covar work?
+        mean, covar = self._forward_gaussian(x)
 
-        #I assume this is a spherical guassian as covariance is not defined on values not on diagonal
         dist = MultivariateNormal(mean, covar)
 
         action = dist.sample()
+        action.requires_grad = True
+
         log_prob = dist.log_prob(action)
 
         return action, log_prob
@@ -141,23 +145,49 @@ class Actor(nn.Module):
 
         How will we multiple a vector of with dimension size of actor and of size parameters?
         """
+
+        other_a = deepcopy(self)
+
+        mean, covar = other_a._forward_gaussian(trans.state)
+        noisey_v = other_a._noisey_vector()
+
+        action = noisey_v @ covar + mean
+        o = optim.Adam(other_a.parameters())
+
+        jacobian = Tensor([])
+
+        for elemenet in action:
+            o.zero_grad()
+            elemenet.backward(retain_graph=True)
+
+            param_grad = Tensor([])
+            for param in other_a.parameters():
+                param_grad = torch.cat((param_grad, param.grad.flatten(start_dim=0)), dim = 0)
+            
+            jacobian = torch.cat((jacobian, param_grad.unsqueeze(dim=0)), dim = 0)
+
+
+
+
+
     
     def _forward_gaussian(self, x : Tensor) -> tuple[Tensor, Tensor]:
+        """Will calculate the mean vector and the covar matrix"""
 
-        x = nn.functional.relu(self._hidden1(x))
-        x = nn.functional.relu(self._hidden2(x))
+        output = self.layers(x)
+        mean = output[:self.real_output_size]
+        std = output[self.real_output_size:]
+        covar = std.pow(2)
+        covar = torch.diag(covar)
 
-        mean = self._mean(x)
-        std = self._std(x)
-
-        return mean, std
+        return mean, covar
     
     #TODO make update parameters and sample from spherical guassian
 
-    def _nosy_vector(self) -> Tensor:
+    def _noisey_vector(self) -> Tensor:
         """Will create a vector epsilon sampled from a spherical guassian"""
-        pass
-
+        
+        return self._s_dist.sample()
 
 
 
