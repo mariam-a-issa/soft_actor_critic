@@ -5,12 +5,14 @@ import torch.optim as optim
 from torch.distributions import MultivariateNormal
 from collections import namedtuple
 from copy import deepcopy
+import gym
 
-STEP_V = .01
-STEP_Q = .01
-STEP_ACTOR = .01
-TAU = .1
-V_GAMMA = .1
+LR = 3 * (10 ** -4)
+STEP_V = LR
+STEP_Q = LR
+STEP_ACTOR = LR
+TAU = .005
+GAMMA = .1
 
 Transition = namedtuple('Transition', ['state', 'action', 'next_state', 'next_action', 'reward']) #If bad performance just switch to a tensor
 
@@ -21,10 +23,10 @@ Transition = namedtuple('Transition', ['state', 'action', 'next_state', 'next_ac
 class BaseNN(nn.Module):
     """Base class for constructing NNs"""
 
-    def __init__(self, input_size : int,  outpute_size : int, hidden_size : int = 2) -> None:
+    def __init__(self, input_size : int,  output_size : int, hidden_size : int = 256) -> None:
         super().__init__()
         self.input_size = input_size
-        self.output_size = outpute_size
+        self.output_size = output_size
         self._hidden_size = hidden_size
 
         self.layers = nn.Sequential(
@@ -48,25 +50,29 @@ class ValueFunction(BaseNN):
         self._q_function = q_function
 
     def update_parameters(self, trans : Transition) -> None:
-        val = self(trans.state) * (float(self(trans.state)) - self._q_function(trans.state, trans.action) + self._actor(trans.state)[1]) #actor returns action, then log prob
+        action, log_prob = self._actor(trans.state)
+        val = self(trans.state) * (float(self(trans.state)) - self._q_function(torch.cat((trans.state, action), dim = 0)) + log_prob)
+        
         self._optim.zero_grad()
         val.backward()
         self._optim.step()
 
 
-class TargetValueModel(BaseNN):
-    """Target target value function that contains method to update parameters not using gradient according to psuedocode""" #Is the psuedocode representation the exponentially moving average?
+class TargetValueFunction:
+    """Target target value function that contains method to update parameters not using gradient according to pseudocode""" #Is the pseudocode representation the exponentially moving average?
 
-    def __init__(self, *args, v_func : ValueFunction) -> None:
-        super().__init__(*args)
+    def upload_v_func(self, v_func : ValueFunction) -> None:
+        self._v_tar = deepcopy(v_func)
         self._v_func = v_func
 
     def update_parameters(self, trans : Transition) -> None:
         with torch.no_grad():
-            v_params = self._v_func.parameters()
-            for param in self.parameters():
-                new_value = TAU * next(v_params) + (1 - TAU)(param)
-                param.copy_(new_value)
+            for t_param, v_param in zip(self._v_tar.parameters(), self._v_func.parameters()):
+                new_value = TAU * v_param + (1 - TAU) * t_param
+                t_param.copy_(new_value)
+
+    def __call__(self, state : Tensor) -> Tensor:
+        return self._v_tar(state)
 
 
 class QModel(BaseNN):
@@ -74,14 +80,14 @@ class QModel(BaseNN):
     Its input should be the state and the action concatenated.
     Updated according to the equation 9"""
 
-    def __init__(self, *args, target_v_func : TargetValueModel) -> None:
+    def __init__(self, *args, target_v_func : TargetValueFunction) -> None:
         super().__init__(*args)
         self._v_func = target_v_func
         self._optim = optim.Adam(self.parameters())
     
     def update_parameters(self, trans : Transition) -> None:
         input_tensor = torch.cat((trans.state, trans.action), dim = 0)
-        val = self(input_tensor) * float(self(input_tensor) - trans.reward - V_GAMMA * self._v_func(trans.next_state))
+        val = self(input_tensor) * (float(self(input_tensor)) - trans.reward - GAMMA * self._v_func(trans.next_state))
         
         self._optim.zero_grad()
         val.backward()
@@ -95,9 +101,9 @@ class QFunction:
         self._q1 = q1
         self._q2 = q2
 
-    def forward(self, x : Tensor) -> Tensor:
-        """x should be the state and the action concatenated on top of each other"""
-        torch.min(self._q1(x), self._q2(x))
+    def __call__(self, x : Tensor) -> Tensor:
+        """x should be the action concatenated to the state"""
+        return torch.min(self._q1(x), self._q2(x))
 
     def update_parameters(self, trans : Transition) -> None:
         for q in self._list_q_funcs():
@@ -110,15 +116,16 @@ class QFunction:
 class Actor(BaseNN):
     """Actor updated according to equation 13"""
 
-    def __init__(self, input_size : int, output_size : int) -> None:
+    def __init__(self, input_size : int, output_size : int, *, q_function : QFunction) -> None:
         super().__init__(input_size, output_size * 2) #Needs to be twice as we need to get mean and covar vectors
+        self._q_function = q_function
         self.real_output_size = output_size
 
         #May need to pick the random numbers differently
         mean = torch.randn(self.real_output_size) 
-        varience = float(torch.rand(1)) 
+        variance = float(torch.rand(1)) 
 
-        covar = varience * torch.eye(self.real_output_size)
+        covar = variance * torch.eye(self.real_output_size)
         self._s_dist = MultivariateNormal(mean, covar)
     
     def forward(self, x : Tensor) -> tuple[Tensor, Tensor]:
@@ -149,16 +156,16 @@ class Actor(BaseNN):
         other_a = deepcopy(self)
 
         mean, covar = other_a._forward_gaussian(trans.state)
-        noisey_v = other_a._noisey_vector()
+        noisy_v = other_a._noisy_vector()
 
-        action = noisey_v @ covar + mean
+        action = noisy_v @ covar + mean
         o = optim.Adam(other_a.parameters())
 
         jacobian = Tensor([])
 
-        for elemenet in action:
+        for element in action:
             o.zero_grad()
-            elemenet.backward(retain_graph=True)
+            element.backward(retain_graph=True)
 
             param_grad = Tensor([])
             for param in other_a.parameters():
@@ -184,7 +191,7 @@ class Actor(BaseNN):
     
     #TODO make update parameters and sample from spherical guassian
 
-    def _noisey_vector(self) -> Tensor:
+    def _noisy_vector(self) -> Tensor:
         """Will create a vector epsilon sampled from a spherical guassian"""
         
         return self._s_dist.sample()
@@ -194,17 +201,52 @@ class Actor(BaseNN):
 
 
 
-def train(gm, len_state : int , len_output : int) -> None:
-    """"
-    init all nns and put into list ordered according to order of updates in paper
+def train(gm : gym.Env, len_state : int , len_output : int, * , max_game : int = None) -> None:
+    """Will train an agent with a continuous state space of dimensionality len_input and
+    a continuous action space of dimensionality of len_output. It will train indefinitely until there
+    is an exception (KeyboardInterrupt) or when the agent has been trained for a defined amount of max_game"""
 
-    for each episode:
-        get transition sequence
-        add to memory
+    #Initialize all networks
+    target_v = TargetValueFunction()
+    q_func = QFunction(QModel(len_state + len_output, 1, target_v_func=target_v),
+                       QModel(len_state + len_output, 1, target_v_func=target_v))
+    actor = Actor(len_state, len_output, q_function=q_func)
+    v_func = ValueFunction(len_state, 1, q_function=q_func, actor=actor)
+    target_v.upload_v_func(v_func)
 
-    if gradient step time
-        for nn in nn_list:
-            nn.update_parameters(batch of transitions)
+    #List of 
+    list_networks = [v_func, q_func, target_v]
+    #list_networks = [v_func, q_func, actor, target_v] This list should be used if training actor
 
-    """
+    num_games = 0
+
+    state = gm.reset()
+    state = Tensor(state[0])
+    action, _ = actor(state)
+    
+    try:
+        while max_game == None or max_game > num_games:
+            
+            next_state, reward, done, _, _ = gm.step(action.detach().numpy())
+            next_state = Tensor(next_state)
+            next_action, _ = actor(next_state)
+
+            trans = Transition(state, action, next_state, next_action, reward)
+
+            for net in list_networks:
+                net.update_parameters(trans)
+
+            if done:
+                state = gm.reset()
+                action, _ = actor(state)
+                num_games += 1
+
+            state = next_state
+            action = next_action
+    finally:
+        gm.close()
+
+if __name__ == '__main__':
+    env = gym.make('Pendulum-v1', render_mode='human')
+    train(env, 3, 1)
     
