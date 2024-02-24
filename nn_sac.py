@@ -6,13 +6,15 @@ from torch.distributions import MultivariateNormal
 from collections import namedtuple
 from copy import deepcopy
 import gym
+from torch.utils.tensorboard import SummaryWriter
+writer = SummaryWriter()
 
 LR = 3 * (10 ** -4)
 STEP_V = LR
 STEP_Q = LR
 STEP_ACTOR = LR
 TAU = .005
-GAMMA = .1
+GAMMA = .99
 
 Transition = namedtuple('Transition', ['state', 'action', 'next_state', 'next_action', 'reward']) #If bad performance just switch to a tensor
 
@@ -45,17 +47,25 @@ class ValueFunction(BaseNN):
 
     def __init__(self, *args, q_function : 'QFunction', actor : 'Actor') -> None:
         super().__init__(*args)
-        self._optim = optim.Adam(self.parameters())
+        self._optim = optim.Adam(self.parameters(), STEP_V)
         self._actor = actor
         self._q_function = q_function
 
+        self._num_updates = 1 #For logging
+
     def update_parameters(self, trans : Transition) -> None:
         action, log_prob = self._actor(trans.state)
-        val = self(trans.state) * (float(self(trans.state)) - self._q_function(torch.cat((trans.state, action), dim = 0)) + log_prob)
+        error = float(self(trans.state) - self._q_function(torch.cat((trans.state, action), dim = 0)) + log_prob)
         
+        val = self(trans.state) * error
         self._optim.zero_grad()
         val.backward()
+
         self._optim.step()
+
+        writer.add_scalar('Value error', error, self._num_updates)
+        self._num_updates += 1
+
 
 
 class TargetValueFunction:
@@ -71,6 +81,7 @@ class TargetValueFunction:
                 new_value = TAU * v_param + (1 - TAU) * t_param
                 t_param.copy_(new_value)
 
+
     def __call__(self, state : Tensor) -> Tensor:
         return self._v_tar(state)
 
@@ -80,18 +91,30 @@ class QModel(BaseNN):
     Its input should be the state and the action concatenated.
     Updated according to the equation 9"""
 
+    _next_id = 1
+
     def __init__(self, *args, target_v_func : TargetValueFunction) -> None:
         super().__init__(*args)
         self._v_func = target_v_func
-        self._optim = optim.Adam(self.parameters())
+        self._optim = optim.Adam(self.parameters(), STEP_Q)
+
+        self._network_id = QModel._next_id
+        QModel._next_id += 1
+        self._num_updates = 1
     
     def update_parameters(self, trans : Transition) -> None:
         input_tensor = torch.cat((trans.state, trans.action), dim = 0)
-        val = self(input_tensor) * (float(self(input_tensor)) - trans.reward - GAMMA * self._v_func(trans.next_state))
-        
+        error = float(self(input_tensor)) - trans.reward - GAMMA * self._v_func(trans.next_state)
+
+        val = self(input_tensor) * error
         self._optim.zero_grad()
         val.backward()
         self._optim.step()
+
+        writer.add_scalar(f'Q function {self._network_id} error', error, self._num_updates)
+        self._num_updates += 1
+
+
 
 
 class QFunction:
@@ -222,11 +245,11 @@ def train(gm : gym.Env, len_state : int , len_output : int, * , max_game : int =
 
     state = gm.reset()
     state = Tensor(state[0])
-    action, _ = actor(state)
+    action, _ = actor(state) #can use random action torch.FloatTensor(1).uniform_(-2.0, 2.0)
     
     try:
         while max_game == None or max_game > num_games:
-            
+            print(action)
             next_state, reward, done, _, _ = gm.step(action.detach().numpy())
             next_state = Tensor(next_state)
             next_action, _ = actor(next_state)
@@ -238,7 +261,7 @@ def train(gm : gym.Env, len_state : int , len_output : int, * , max_game : int =
 
             if done:
                 state = gm.reset()
-                action, _ = actor(state)
+                action, _ = actor(state) #can use random action torch.FloatTensor(1).uniform_(-2.0, 2.0)
                 num_games += 1
 
             state = next_state
