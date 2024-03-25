@@ -27,13 +27,13 @@ Transition = namedtuple('Transition',
                          'next_action', 
                          'reward', 
                          'done']) #If bad performance just switch to a tensor
-
 if torch.cuda.is_available():
     device = f'cuda:{torch.cuda.current_device()}'
 #elif torch.backends.mps.is_available():
 #  device = 'mps'
 else:
     device = 'cpu'
+#device = 'cpu'
 
 _DEVICE = torch.device(device)
 
@@ -193,19 +193,17 @@ class Actor(BaseNN):
 
     def forward(self, x : Tensor) -> Tensor:
         """Will reuturn a tensor that represents the action for a single or batch of a state"""
+        
         dist = self._dist(x)
         action = dist.sample()
-        action = torch.tanh(action)
-        log_probs = dist.log_prob(action) - torch.log(torch.mean(1 - torch.tanh(action) ** 2) + EPS)
-        return action, log_probs
-
+        return self._squash_output(action, dist)
 
     def update_parameters(self, trans : Transition) -> None:
         """Updates the parameters using equation 12"""
 
         dist = self._dist(trans.state)
         actions = dist.rsample()
-        log_probs = dist.log_prob(actions)
+        actions, log_probs = self._squash_output(actions, dist)
         input_tensor = torch.cat((trans.state, actions), dim=1)
         error : Tensor = log_probs - self._q_function(input_tensor)
         loss = error.mean()
@@ -216,6 +214,14 @@ class Actor(BaseNN):
 
         writer.add_scalar('Actor loss', loss, self._num_updates)
         self._num_updates += 1
+
+    def _squash_output(self, action : Tensor, dist : MultivariateNormal) -> tuple[Tensor, Tensor]:
+        """Will squash the action and the log_prob with tanh using equation 20
+        Can be used on batches or on single values"""
+
+        action = torch.tanh(action) * 2
+        log_probs = dist.log_prob(action) - torch.sum(torch.log(1 - torch.tanh(action) ** 2 + EPS), dim = -1)
+        return action, log_probs
 
     def _dist(self, x : Tensor) -> MultivariateNormal:
         """Will create a distribution for either a single or batch of a state """
@@ -328,6 +334,6 @@ def train(gm : gym.Env, len_state : int , len_output : int, * , reward_scale : f
 
 
 if __name__ == '__main__':
-    env = gym.make('Hopper-v4', render_mode = 'human')
-    train(env, 11, 3, reward_scale=5.0)
+    env = gym.make('Pendulum-v1', render_mode = 'human')
+    train(env, 3, 1, reward_scale=5.0)
     
