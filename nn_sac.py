@@ -1,13 +1,14 @@
-import torch
-import torch.nn as nn
-from torch import Tensor
-import torch.optim as optim
-from torch.distributions import MultivariateNormal
-from torch.nn import MSELoss
-from collections import namedtuple
+from collections import namedtuple, deque
+import random
 from copy import deepcopy
-import gym
+
+import torch
+from torch import nn, optim, Tensor
+from torch.distributions import MultivariateNormal
 from torch.utils.tensorboard import SummaryWriter
+
+import gym
+
 writer = SummaryWriter()
 
 LR = 3 * (10 ** -4)
@@ -16,8 +17,10 @@ STEP_Q = LR
 STEP_ACTOR = LR
 TAU = .005
 GAMMA = .99
+BUFFER_SIZE = 10 ** 6
+SAMPLE_SIZE = 256
 
-Transition = namedtuple('Transition', ['state', 'action', 'next_state', 'next_action', 'reward']) #If bad performance just switch to a tensor
+Transition = namedtuple('Transition', ['state', 'action', 'next_state', 'next_action', 'reward', 'done']) #If bad performance just switch to a tensor
 
 
 
@@ -43,7 +46,6 @@ class BaseNN(nn.Module):
     
 
 class ValueFunction(BaseNN):
-    """Will be target function that updates parameters according to equation 6"""
 
     def __init__(self, *args, q_function : 'QFunction', actor : 'Actor') -> None:
         super().__init__(*args)
@@ -54,9 +56,10 @@ class ValueFunction(BaseNN):
         self._num_updates = 1 #For logging
 
     def update_parameters(self, trans : Transition) -> None:
+        """Use equation 5 to update"""
         actions, log_prob = self._actor(trans.state)
         input_tensor = torch.cat((trans.state, actions), dim = 1)
-        error : Tensor = 1/2 * ((self(trans.action) - (self._q_func(input_tensor) - log_prob)) ** 2)
+        error : Tensor = 1/2 * ((self(trans.state) - (self._q_func(input_tensor) - log_prob)) ** 2)
         ex_error = error.mean()
 
         self._optim.zero_grad()
@@ -76,6 +79,7 @@ class TargetValueFunction:
         self._v_func = None
 
     def upload_v_func(self, v_func : ValueFunction) -> None:
+        """Uploads the v function after the target is made"""
         self._v_tar = deepcopy(v_func)
         self._v_func = v_func
 
@@ -93,8 +97,7 @@ class TargetValueFunction:
 
 class QModel(BaseNN):
     """Will be the model representing a q function.
-    Its input should be the state and the action concatenated.
-    Updated according to the equation 9"""
+    Its input should be the state and the action concatenated."""
 
     _next_id = 1
 
@@ -110,10 +113,11 @@ class QModel(BaseNN):
     def update_parameters(self, trans : Transition) -> None:
         """Update parameters according to equations 7 and 8"""
         input_tensor = torch.cat((trans.state, trans.action), dim = 1)
-        error : Tensor = 1/2 * ((self(input_tensor) - (trans.reward + self._v_func(trans.next_state))) ** 2)
+
+        error : Tensor = 1/2 * ((self(input_tensor) - (trans.reward + GAMMA  * (1- trans.done) * self._v_func(trans.next_state))) ** 2)
         ex_error = error.mean()
 
-        self._optim.zero_grad
+        self._optim.zero_grad()
         ex_error.backward()
         self._optim.step()
 
@@ -144,7 +148,6 @@ class QFunction:
 
 
 class Actor(BaseNN):
-    """Actor updated according to equation 13"""
 
     def __init__(self, input_size : int, output_size : int, *, q_function : QFunction) -> None:
         super().__init__(input_size, output_size)
@@ -155,26 +158,33 @@ class Actor(BaseNN):
         self.layers = self.layers[:-1]
         self._mean_lin = nn.Linear(self._hidden_size, output_size)
         self._covar_lin = nn.Linear(self._hidden_size, output_size)
-        self._optim = optim.Adam(self.layers.parameters() + self._mean_lin() + self._covar_lin.parameters(),
-                                 STEP_ACTOR)
-    
+
+        def all_params():
+            yield from self.layers.parameters()
+            yield from self._mean_lin.parameters()
+            yield from self._covar_lin.parameters()
+
+        self._optim = optim.Adam(all_params(), STEP_ACTOR)
+
     def forward(self, x : Tensor) -> Tensor:
         """Will reuturn a tensor that represents the action for a single or batch of a state"""
         dist = self._dist(x)
         action = dist.sample()
         return action, dist.log_prob(action)
 
-    
+
     def update_parameters(self, trans : Transition) -> None:
         """Updates the parameters using equation 12"""
 
         dist = self._dist(trans.state)
         actions = dist.rsample()
         log_probs = dist.log_prob(actions)
-        loss : Tensor = log_probs - self._q_function(torch.cat((trans.state, actions), dim=1)) #Concate in dimension where the vectors representing state and action are stored
-        
+        input_tensor = torch.cat((trans.state, actions), dim=1)
+        error : Tensor = log_probs - self._q_function(input_tensor)
+        loss = error.mean()
+
         self._optim.zero_grad()
-        loss.mean().backward()
+        loss.backward()
         self._optim.step()
 
     def _dist(self, x : Tensor) -> MultivariateNormal:
@@ -192,41 +202,36 @@ class Actor(BaseNN):
             covar_m = torch.diag(covar)
 
         return MultivariateNormal(mean, covar_m)
+
+
+class MemoryBuffer:
+    def __init__(self) -> None:
+        self._memory = deque(maxlen=BUFFER_SIZE)
+
+    def sample(self) -> Transition:
+        """Will sample a batch of transitions from the replay buffer"""
+        if len(self._memory) <= SAMPLE_SIZE:
+            sample = self._memory #sample will be a list of transitions
+        else:
+            sample = random.sample(self._memory, SAMPLE_SIZE)
+
+        state, action, next_state, next_action, reward, done = zip(*sample) #unpack list and create tuples of each thing in transition
+        return Transition(state = torch.stack(state, dim = 0), 
+                          action = torch.stack(action, dim = 0),
+                          next_state = torch.stack(next_state, dim = 0),
+                          next_action = torch.stack(next_action, dim = 0),
+                          reward = torch.stack(reward, dim = 0),
+                          done = torch.stack(done, dim = 0))
     
-    
-    def _forward_gaussian(self, x : Tensor) -> tuple[Tensor, Tensor]:
-        """Will calculate the mean vector and the covar matrix"""
-
-    def _forward_gaussian(self, x : Tensor) -> tuple[Tensor, Tensor]:
-        """Will calculate the mean vector and the covar matrix"""
-
-
-        output = self.layers(x)
-        mean = output[:self.real_output_size]
-        std = output[self.real_output_size:]
-        covar = std.pow(2)
-        covar = torch.diag(covar)
-    
-        output = self.layers(x)
-        mean = output[:self.real_output_size]
-        std = output[self.real_output_size:]
-        covar = std.pow(2)
-        covar = torch.diag(covar)
-    
-    #TODO make update parameters and sample from spherical guassian
-        
-    #TODO make update parameters and sample from spherical guassian
-        
-        return self._s_dist.sample()
-
-        return self._s_dist.sample()
+    def add_data(self, trans : Transition) -> None:
+        """Will add the data from the single transition into the buffer"""
+        self._memory.append(trans)
 
 
 
 
 
-
-def train(gm : gym.Env, len_state : int , len_output : int, * , max_game : int = None) -> None:
+def train(gm : gym.Env, len_state : int , len_output : int, * , reward_scale : float, max_game : int = None) -> None:
     """Will train an agent with a continuous state space of dimensionality len_input and
     a continuous action space of dimensionality of len_output. It will train indefinitely until there
     is an exception (KeyboardInterrupt) or when the agent has been trained for a defined amount of max_game"""
@@ -239,33 +244,45 @@ def train(gm : gym.Env, len_state : int , len_output : int, * , max_game : int =
     v_func = ValueFunction(len_state, 1, q_function=q_func, actor=actor)
     target_v.upload_v_func(v_func)
 
-    #List of 
-    list_networks = [v_func, q_func, target_v]
+    list_networks = [v_func, q_func, actor, target_v]
     #list_networks = [v_func, q_func, actor, target_v] This list should be used if training actor
-
+    
+    replay_buffer = MemoryBuffer()
     num_games = 0
     episodes = 0
 
-    state = gm.reset()
-    state = Tensor(state[0])
-    action, _ = actor.action_log(state) #can use random action torch.FloatTensor(1).uniform_(-2.0, 2.0)
-    
+    state = gm.reset()[0]
+    action, _ = actor(Tensor(state)) #can use random action torch.FloatTensor(1).uniform_(-2.0, 2.0)
+
+
+
     try:
         while max_game is None or max_game > num_games:
             next_state, reward, done, _, _ = gm.step(action.detach().numpy())
+            reward *= reward_scale
             next_state = Tensor(next_state)
             next_action, _ = actor(next_state)
 
-            trans = Transition(state, action, next_state, next_action, reward)
+            trans = Transition( #states will be np arrays, actions will be tensors, the reward will be a float, and done will be a bool
+                Tensor(state),
+                action,
+                Tensor(next_state),
+                next_action,
+                Tensor([reward]),
+                Tensor([done])
+            )
 
+            replay_buffer.add_data(trans)
+            
+            batch = replay_buffer.sample()
             for net in list_networks:
-                net.update_parameters(trans)
+                net.update_parameters(batch)
 
             episodes += 1
 
             if done or episodes > 500:
-                state = gm.reset()
-                action, _ = actor(state) #can use random action torch.FloatTensor(1).uniform_(-2.0, 2.0)
+                state = gm.reset()[0]
+                action, _ = actor(Tensor(state)) #can use random action torch.FloatTensor(1).uniform_(-2.0, 2.0)
                 num_games += 1
                 episodes = 0
             
@@ -274,7 +291,8 @@ def train(gm : gym.Env, len_state : int , len_output : int, * , max_game : int =
     finally:
         gm.close()
 
+
 if __name__ == '__main__':
-    env = gym.make('BipedalWalker-v3', render_mode = 'human')
-    train(env, 24, 4)
+    env = gym.make('Hopper-v4', render_mode = 'human')
+    train(env, 11, 3, reward_scale=5.0)
     
