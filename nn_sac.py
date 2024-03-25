@@ -3,13 +3,11 @@ import random
 from copy import deepcopy
 
 import torch
-from torch import nn, optim, Tensor
+from torch import nn, optim, tensor, Tensor
 from torch.distributions import MultivariateNormal
 from torch.utils.tensorboard import SummaryWriter
 
 import gym
-
-writer = SummaryWriter()
 
 LR = 3 * (10 ** -4)
 STEP_V = LR
@@ -20,7 +18,26 @@ GAMMA = .99
 BUFFER_SIZE = 10 ** 6
 SAMPLE_SIZE = 256
 
-Transition = namedtuple('Transition', ['state', 'action', 'next_state', 'next_action', 'reward', 'done']) #If bad performance just switch to a tensor
+EPS = 1e-6 #So that we do not have a log(0) for the tanh squash of the actor
+
+Transition = namedtuple('Transition', 
+                        ['state', 
+                         'action', 
+                         'next_state', 
+                         'next_action', 
+                         'reward', 
+                         'done']) #If bad performance just switch to a tensor
+
+if torch.cuda.is_available():
+    device = f'cuda:{torch.cuda.current_device()}'
+#elif torch.backends.mps.is_available():
+#  device = 'mps'
+else:
+    device = 'cpu'
+
+_DEVICE = torch.device(device)
+
+torch.set_default_device(_DEVICE)
 
 
 
@@ -60,13 +77,13 @@ class ValueFunction(BaseNN):
         actions, log_prob = self._actor(trans.state)
         input_tensor = torch.cat((trans.state, actions), dim = 1)
         error : Tensor = 1/2 * ((self(trans.state) - (self._q_func(input_tensor) - log_prob)) ** 2)
-        ex_error = error.mean()
+        loss = error.mean()
 
         self._optim.zero_grad()
-        ex_error.backward()
+        loss.backward()
         self._optim.step()
 
-        writer.add_scalar('Value error', ex_error, self._num_updates)
+        writer.add_scalar('Value loss', loss, self._num_updates)
         self._num_updates += 1
 
 
@@ -109,19 +126,20 @@ class QModel(BaseNN):
         self._network_id = QModel._next_id
         QModel._next_id += 1
         self._num_updates = 1
+
     
     def update_parameters(self, trans : Transition) -> None:
         """Update parameters according to equations 7 and 8"""
         input_tensor = torch.cat((trans.state, trans.action), dim = 1)
 
         error : Tensor = 1/2 * ((self(input_tensor) - (trans.reward + GAMMA  * (1- trans.done) * self._v_func(trans.next_state))) ** 2)
-        ex_error = error.mean()
+        loss = error.mean()
 
         self._optim.zero_grad()
-        ex_error.backward()
+        loss.backward()
         self._optim.step()
 
-        writer.add_scalar(f'Q function {self._network_id} error', ex_error, self._num_updates)
+        writer.add_scalar(f'Q function {self._network_id} loss', loss, self._num_updates)
         self._num_updates += 1
 
 
@@ -142,6 +160,11 @@ class QFunction:
         """Will update both q models of the q functions"""
         for q in self._list_q_funcs():
             q.update_parameters(trans)
+
+    def to(self, device) -> None:
+        """Will move both of the q models to the device"""
+        for model in self._list_q_funcs():
+            model.to(device)
 
     def _list_q_funcs(self) -> list[QModel]:
         return [self._q1, self._q2]
@@ -166,11 +189,15 @@ class Actor(BaseNN):
 
         self._optim = optim.Adam(all_params(), STEP_ACTOR)
 
+        self._num_updates = 0
+
     def forward(self, x : Tensor) -> Tensor:
         """Will reuturn a tensor that represents the action for a single or batch of a state"""
         dist = self._dist(x)
         action = dist.sample()
-        return action, dist.log_prob(action)
+        action = torch.tanh(action)
+        log_probs = dist.log_prob(action) - torch.log(torch.mean(1 - torch.tanh(action) ** 2) + EPS)
+        return action, log_probs
 
 
     def update_parameters(self, trans : Transition) -> None:
@@ -186,6 +213,9 @@ class Actor(BaseNN):
         self._optim.zero_grad()
         loss.backward()
         self._optim.step()
+
+        writer.add_scalar('Actor loss', loss, self._num_updates)
+        self._num_updates += 1
 
     def _dist(self, x : Tensor) -> MultivariateNormal:
         """Will create a distribution for either a single or batch of a state """
@@ -227,14 +257,13 @@ class MemoryBuffer:
         """Will add the data from the single transition into the buffer"""
         self._memory.append(trans)
 
-
-
-
-
-def train(gm : gym.Env, len_state : int , len_output : int, * , reward_scale : float, max_game : int = None) -> None:
+def train(gm : gym.Env, len_state : int , len_output : int, * , reward_scale : float, max_game : int = None, max_steps : int = None) -> None:
     """Will train an agent with a continuous state space of dimensionality len_input and
     a continuous action space of dimensionality of len_output. It will train indefinitely until there
     is an exception (KeyboardInterrupt) or when the agent has been trained for a defined amount of max_game"""
+
+    global writer #Should be fixed later
+    writer = SummaryWriter() 
 
     #Initialize all networks
     target_v = TargetValueFunction()
@@ -244,6 +273,10 @@ def train(gm : gym.Env, len_state : int , len_output : int, * , reward_scale : f
     v_func = ValueFunction(len_state, 1, q_function=q_func, actor=actor)
     target_v.upload_v_func(v_func)
 
+    q_func.to(_DEVICE)
+    actor.to(_DEVICE)
+    v_func.to(_DEVICE)
+
     list_networks = [v_func, q_func, actor, target_v]
     #list_networks = [v_func, q_func, actor, target_v] This list should be used if training actor
     
@@ -252,24 +285,25 @@ def train(gm : gym.Env, len_state : int , len_output : int, * , reward_scale : f
     episodes = 0
 
     state = gm.reset()[0]
-    action, _ = actor(Tensor(state)) #can use random action torch.FloatTensor(1).uniform_(-2.0, 2.0)
+    action, _ = actor(tensor(state, device=_DEVICE, dtype=torch.float32)) #can use random action torch.FloatTensor(1).uniform_(-2.0, 2.0)
 
-
+    total_return = 0
 
     try:
-        while max_game is None or max_game > num_games:
-            next_state, reward, done, _, _ = gm.step(action.detach().numpy())
+        while (max_game is None or max_game > num_games) and (max_steps is None or max_steps > episodes):
+            next_state, reward, done, _, _ = gm.step(action.clone().detach().cpu().numpy())
+            total_return += reward
             reward *= reward_scale
-            next_state = Tensor(next_state)
+            next_state = tensor(next_state, device=_DEVICE, dtype=torch.float32)
             next_action, _ = actor(next_state)
 
             trans = Transition( #states will be np arrays, actions will be tensors, the reward will be a float, and done will be a bool
-                Tensor(state),
+                tensor(state, device=_DEVICE, dtype=torch.float32),
                 action,
-                Tensor(next_state),
+                tensor(next_state, device=_DEVICE, dtype=torch.float32),
                 next_action,
-                Tensor([reward]),
-                Tensor([done])
+                tensor([reward], device=_DEVICE, dtype=torch.float32),
+                tensor([done], device=_DEVICE, dtype=torch.float32)
             )
 
             replay_buffer.add_data(trans)
@@ -280,11 +314,12 @@ def train(gm : gym.Env, len_state : int , len_output : int, * , reward_scale : f
 
             episodes += 1
 
-            if done or episodes > 500:
+            if done:
                 state = gm.reset()[0]
-                action, _ = actor(Tensor(state)) #can use random action torch.FloatTensor(1).uniform_(-2.0, 2.0)
+                action, _ = actor(tensor(state, device=_DEVICE, dtype=torch.float32)) #can use random action torch.FloatTensor(1).uniform_(-2.0, 2.0)
                 num_games += 1
-                episodes = 0
+                average_return = total_return / num_games
+                writer.add_scalar('Average return', average_return, episodes)
             
             state = next_state
             action = next_action
