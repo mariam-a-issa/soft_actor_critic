@@ -304,7 +304,7 @@ class MemoryBuffer:
         """Will add the data from the single transition into the buffer"""
         self._memory.append(trans)
 
-def train(gm : gym.Env, len_state : int , len_output : int, * , reward_scale : float, max_game : int = None, max_steps : int = None) -> None:
+def train(gm : gym.Env, len_state : int , len_output : int, * , reward_scale : float, max_game : int=None, max_steps : int=None, extra_save_info : str=None) -> None:
     """Will train an agent with a continuous state space of dimensionality len_input and
     a continuous action space of dimensionality of len_output. It will train indefinitely until there
     is an exception (KeyboardInterrupt) or when the agent has been trained for a defined amount of max_game"""
@@ -372,7 +372,13 @@ def train(gm : gym.Env, len_state : int , len_output : int, * , reward_scale : f
             state = next_state
             action = next_action
     finally:
-        actor.save()
+        
+        file_name = 'best_weights'
+        if extra_save_info is not None:
+            file_name += extra_save_info
+        file_name += '.pt'
+
+        actor.save(file_name)
         gm.close()
 
 
