@@ -1,6 +1,7 @@
 from collections import namedtuple, deque
 import random
 from copy import deepcopy
+import os
 
 import torch
 from torch import nn, optim, tensor, Tensor
@@ -64,6 +65,23 @@ class BaseNN(nn.Module):
         """Using batchs x should be N x D where N is the number of batches"""
         return self.layers(x)
     
+    def save(self, file_name : str='best_weights.pt') -> None:
+        """Will save the model in the folder 'model' in the dir that the script was run in."""
+
+        folder_name = type(self).__name__ + self.extra_info()
+
+        model_folder_path = './model/' + folder_name
+
+        if not os.path.exists(model_folder_path):
+            os.makedirs(model_folder_path)
+        file_dir = os.path.join(model_folder_path, file_name)
+
+        torch.save(self.state_dict(), file_dir)
+
+    def extra_info(self) -> str:
+        """Returns any extra information that describes the current NN"""
+        return ''
+    
 
 class ValueFunction(BaseNN):
 
@@ -101,7 +119,7 @@ class ValueFunction(BaseNN):
 
 
 class TargetValueFunction:
-    """Target target value function that contains method to update parameters not using gradient according to pseudocode""" #Is the pseudocode representation the exponentially moving average?
+    """Target target value function that contains method to update parameters not using gradient according to pseudocode"""
 
     def __init__(self) -> None:
         self._v_tar = None
@@ -154,6 +172,9 @@ class QModel(BaseNN):
         writer.add_scalar(f'Q function {self._network_id} loss', loss, self._num_updates)
         self._num_updates += 1
 
+    def extra_info(self) -> str:
+        return self._network_id
+
 
 
 
@@ -177,6 +198,11 @@ class QFunction:
         """Will move both of the q models to the device"""
         for model in self._list_q_funcs():
             model.to(device)
+    
+    def save(self, file_name : str='best_weights.pt') -> None:
+        """Saves the best weights of each q model"""
+        for model in self._list_q_funcs():
+            model.save(file_name)
 
     def _list_q_funcs(self) -> list[QModel]:
         return [self._q1, self._q2]
@@ -199,7 +225,7 @@ class Actor(BaseNN):
             yield from self._mean_lin.parameters()
             yield from self._covar_lin.parameters()
 
-        self._optim = optim.Adam(all_params(), STEP_ACTOR, weight_decay=ACTOR_WEIGHT_DECAY)
+        self._optim = optim.Adam(all_params(), STEP_ACTOR, weight_decay=ACTOR_WEIGHT_DECAY) #weight decay is for l2 regularization which I think the github code uses I am not 100% though
 
         self._num_updates = 0
 
@@ -215,7 +241,7 @@ class Actor(BaseNN):
         """Updates the parameters using equation 12"""
 
         dist = self._dist(trans.state)
-        actions = dist.rsample()
+        actions = dist.rsample() #Will do the reparamaterization trick for us
         actions, log_probs = self._squash_output(actions, dist)
         input_tensor = torch.cat((trans.state, actions), dim=1)
         error : Tensor = log_probs - self._q_function(input_tensor)
@@ -267,7 +293,7 @@ class MemoryBuffer:
             sample = random.sample(self._memory, SAMPLE_SIZE)
 
         state, action, next_state, next_action, reward, done = zip(*sample) #unpack list and create tuples of each data point in transition
-        return Transition(state = torch.stack(state, dim = 0), 
+        return Transition(state = torch.stack(state, dim = 0), #Each element of transition is the batch of values
                           action = torch.stack(action, dim = 0),
                           next_state = torch.stack(next_state, dim = 0),
                           next_action = torch.stack(next_action, dim = 0),
@@ -346,6 +372,7 @@ def train(gm : gym.Env, len_state : int , len_output : int, * , reward_scale : f
             state = next_state
             action = next_action
     finally:
+        actor.save()
         gm.close()
 
 
