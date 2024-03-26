@@ -17,6 +17,7 @@ TAU = .005
 GAMMA = .99
 BUFFER_SIZE = 10 ** 6
 SAMPLE_SIZE = 256
+HIDDEN_LAYER_SIZE = 256
 
 EPS = 1e-6 #So that we do not have a log(0) for the tanh squash of the actor
 
@@ -27,6 +28,7 @@ Transition = namedtuple('Transition',
                          'next_action', 
                          'reward', 
                          'done']) #If bad performance just switch to a tensor
+
 if torch.cuda.is_available():
     device = f'cuda:{torch.cuda.current_device()}'
 #elif torch.backends.mps.is_available():
@@ -44,7 +46,7 @@ torch.set_default_device(_DEVICE)
 class BaseNN(nn.Module):
     """Base class for constructing NNs"""
 
-    def __init__(self, input_size : int,  output_size : int, hidden_size : int = 256) -> None:
+    def __init__(self, input_size : int,  output_size : int, hidden_size : int = HIDDEN_LAYER_SIZE) -> None:
         super().__init__()
         self.input_size = input_size
         self.output_size = output_size
@@ -76,8 +78,8 @@ class ValueFunction(BaseNN):
         """Use equation 5 to update"""
         actions, log_prob = self._actor(trans.state)
         input_tensor = torch.cat((trans.state, actions), dim = 1)
-        error : Tensor = self(trans.state) - (self._q_func(input_tensor) - log_prob)
-        loss = 1/2 * error.mean() ** 2
+        error : Tensor = (self(trans.state) - (self._q_func(input_tensor) - log_prob)) ** 2
+        loss = 1/2 * error.mean()
 
         self._optim.zero_grad()
         loss.backward()
@@ -132,8 +134,8 @@ class QModel(BaseNN):
         """Update parameters according to equations 7 and 8"""
         input_tensor = torch.cat((trans.state, trans.action), dim = 1)
 
-        error : Tensor = self(input_tensor) - (trans.reward + GAMMA  * (1- trans.done) * self._v_func(trans.next_state))
-        loss = 1/2 * error.mean() ** 2
+        error : Tensor = (self(input_tensor) - (trans.reward + GAMMA  * (1- trans.done) * self._v_func(trans.next_state))) ** 2
+        loss = 1/2 * error.mean()
 
         self._optim.zero_grad()
         loss.backward()
@@ -219,7 +221,7 @@ class Actor(BaseNN):
         """Will squash the action and the log_prob with tanh using equation 20
         Can be used on batches or on single values"""
 
-        action = torch.tanh(action) * 2
+        action = torch.tanh(action)
         log_probs : Tensor = (dist.log_prob(action) - torch.sum(torch.log(1 - torch.tanh(action) ** 2 + EPS), dim = -1)).unsqueeze(-1)
 
         return action, log_probs
@@ -252,7 +254,7 @@ class MemoryBuffer:
         else:
             sample = random.sample(self._memory, SAMPLE_SIZE)
 
-        state, action, next_state, next_action, reward, done = zip(*sample) #unpack list and create tuples of each thing in transition
+        state, action, next_state, next_action, reward, done = zip(*sample) #unpack list and create tuples of each data point in transition
         return Transition(state = torch.stack(state, dim = 0), 
                           action = torch.stack(action, dim = 0),
                           next_state = torch.stack(next_state, dim = 0),
