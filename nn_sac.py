@@ -18,6 +18,7 @@ GAMMA = .99
 BUFFER_SIZE = 10 ** 6
 SAMPLE_SIZE = 256
 HIDDEN_LAYER_SIZE = 256
+ACTOR_WEIGHT_DECAY = 1
 
 EPS = 1e-6 #So that we do not have a log(0) for the tanh squash of the actor
 
@@ -41,7 +42,7 @@ _DEVICE = torch.device(device)
 
 torch.set_default_device(_DEVICE)
 
-
+#Throughout code I used n x data_dims where n is the batch size. If not using a batch n = 1
 
 class BaseNN(nn.Module):
     """Base class for constructing NNs"""
@@ -78,7 +79,16 @@ class ValueFunction(BaseNN):
         """Use equation 5 to update"""
         actions, log_prob = self._actor(trans.state)
         input_tensor = torch.cat((trans.state, actions), dim = 1)
-        error : Tensor = (self(trans.state) - (self._q_func(input_tensor) - log_prob)) ** 2
+
+        #For a regularization term which was included Haarnoja github implementation
+        data_s = actions.shape[-1]
+        num_batches = actions.shape[0]
+        policy_prior = MultivariateNormal(
+            loc=torch.zeros(data_s).unsqueeze(0).repeat(num_batches, 1),
+            covariance_matrix=torch.eye(data_s).unsqueeze(0).repeat(num_batches, 1, 1))
+        policy_prior_log_probs = policy_prior.log_prob(actions)
+
+        error : Tensor = (self(trans.state) - (self._q_func(input_tensor) - log_prob + policy_prior_log_probs)) ** 2
         loss = 1/2 * error.mean()
 
         self._optim.zero_grad()
@@ -189,7 +199,7 @@ class Actor(BaseNN):
             yield from self._mean_lin.parameters()
             yield from self._covar_lin.parameters()
 
-        self._optim = optim.Adam(all_params(), STEP_ACTOR)
+        self._optim = optim.Adam(all_params(), STEP_ACTOR, weight_decay=ACTOR_WEIGHT_DECAY)
 
         self._num_updates = 0
 
@@ -198,6 +208,7 @@ class Actor(BaseNN):
         
         dist = self._dist(x)
         action = dist.sample()
+
         return self._squash_output(action, dist)
 
     def update_parameters(self, trans : Transition) -> None:
@@ -225,6 +236,7 @@ class Actor(BaseNN):
         log_probs : Tensor = (dist.log_prob(action) - torch.sum(torch.log(1 - torch.tanh(action) ** 2 + EPS), dim = -1)).unsqueeze(-1)
 
         return action, log_probs
+        #return action, dist.log_prob(action).unsqueeze(dim = -1)
 
     def _dist(self, x : Tensor) -> MultivariateNormal:
         """Will create a distribution for either a single or batch of a state """
