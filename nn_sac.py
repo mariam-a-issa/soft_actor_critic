@@ -173,7 +173,7 @@ class QModel(BaseNN):
         self._num_updates += 1
 
     def extra_info(self) -> str:
-        return self._network_id
+        return str(self._network_id)
 
 
 
@@ -372,7 +372,7 @@ def train(gm : gym.Env, len_state : int , len_output : int, * , reward_scale : f
             state = next_state
             action = next_action
     finally:
-        
+
         file_name = 'best_weights'
         if extra_save_info is not None:
             file_name += extra_save_info
