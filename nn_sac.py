@@ -76,8 +76,8 @@ class ValueFunction(BaseNN):
         """Use equation 5 to update"""
         actions, log_prob = self._actor(trans.state)
         input_tensor = torch.cat((trans.state, actions), dim = 1)
-        error : Tensor = 1/2 * ((self(trans.state) - (self._q_func(input_tensor) - log_prob)) ** 2)
-        loss = error.mean()
+        error : Tensor = self(trans.state) - (self._q_func(input_tensor) - log_prob)
+        loss = 1/2 * error.mean() ** 2
 
         self._optim.zero_grad()
         loss.backward()
@@ -132,8 +132,8 @@ class QModel(BaseNN):
         """Update parameters according to equations 7 and 8"""
         input_tensor = torch.cat((trans.state, trans.action), dim = 1)
 
-        error : Tensor = 1/2 * ((self(input_tensor) - (trans.reward + GAMMA  * (1- trans.done) * self._v_func(trans.next_state))) ** 2)
-        loss = error.mean()
+        error : Tensor = self(input_tensor) - (trans.reward + GAMMA  * (1- trans.done) * self._v_func(trans.next_state))
+        loss = 1/2 * error.mean() ** 2
 
         self._optim.zero_grad()
         loss.backward()
@@ -191,7 +191,7 @@ class Actor(BaseNN):
 
         self._num_updates = 0
 
-    def forward(self, x : Tensor) -> Tensor:
+    def forward(self, x : Tensor) -> tuple[Tensor, Tensor]:
         """Will reuturn a tensor that represents the action for a single or batch of a state"""
         
         dist = self._dist(x)
@@ -220,7 +220,8 @@ class Actor(BaseNN):
         Can be used on batches or on single values"""
 
         action = torch.tanh(action) * 2
-        log_probs = dist.log_prob(action) - torch.sum(torch.log(1 - torch.tanh(action) ** 2 + EPS), dim = -1)
+        log_probs : Tensor = (dist.log_prob(action) - torch.sum(torch.log(1 - torch.tanh(action) ** 2 + EPS), dim = -1)).unsqueeze(-1)
+
         return action, log_probs
 
     def _dist(self, x : Tensor) -> MultivariateNormal:
@@ -297,7 +298,8 @@ def train(gm : gym.Env, len_state : int , len_output : int, * , reward_scale : f
 
     try:
         while (max_game is None or max_game > num_games) and (max_steps is None or max_steps > episodes):
-            next_state, reward, done, _, _ = gm.step(action.clone().detach().cpu().numpy())
+            next_state, reward, terminated, truncated, _ = gm.step(action.clone().detach().cpu().numpy())
+            done = terminated or truncated
             total_return += reward
             reward *= reward_scale
             next_state = tensor(next_state, device=_DEVICE, dtype=torch.float32)
@@ -334,6 +336,6 @@ def train(gm : gym.Env, len_state : int , len_output : int, * , reward_scale : f
 
 
 if __name__ == '__main__':
-    env = gym.make('Pendulum-v1', render_mode = 'human')
-    train(env, 3, 1, reward_scale=5.0)
+    env = gym.make('Hopper-v4', render_mode = 'human')
+    train(env, 11, 3, reward_scale=5.0)
     
