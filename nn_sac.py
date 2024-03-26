@@ -18,7 +18,7 @@ GAMMA = .99
 BUFFER_SIZE = 10 ** 6
 SAMPLE_SIZE = 256
 HIDDEN_LAYER_SIZE = 256
-ACTOR_WEIGHT_DECAY = 1
+ACTOR_WEIGHT_DECAY = 1e-3 #Found regularization in code
 
 EPS = 1e-6 #So that we do not have a log(0) for the tanh squash of the actor
 
@@ -232,10 +232,10 @@ class Actor(BaseNN):
         """Will squash the action and the log_prob with tanh using equation 20
         Can be used on batches or on single values"""
 
-        action = torch.tanh(action)
+        tan_action = torch.tanh(action)
         log_probs : Tensor = (dist.log_prob(action) - torch.sum(torch.log(1 - torch.tanh(action) ** 2 + EPS), dim = -1)).unsqueeze(-1)
 
-        return action, log_probs
+        return tan_action, log_probs
         #return action, dist.log_prob(action).unsqueeze(dim = -1)
 
     def _dist(self, x : Tensor) -> MultivariateNormal:
