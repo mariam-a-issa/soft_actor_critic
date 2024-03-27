@@ -269,7 +269,7 @@ class Actor(BaseNN):
 
         mean = self._mean_lin(self.layers(x))
         covar = self._covar_lin(self.layers(x))
-        covar = covar.pow(2)
+        covar = covar.pow(2).add(EPS) #For when the covar is zero
 
         if len(covar.shape) == 2: #When dealing with batches
             covar_m = torch.diag(covar[0]).unsqueeze(dim = 0)
