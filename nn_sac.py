@@ -106,7 +106,7 @@ class ValueFunction(BaseNN):
             covariance_matrix=torch.eye(data_s).unsqueeze(0).repeat(num_batches, 1, 1))
         policy_prior_log_probs = policy_prior.log_prob(actions)
 
-        error : Tensor = (self(trans.state) - (self._q_func(input_tensor) - log_prob + policy_prior_log_probs)) ** 2
+        error : Tensor = (self(trans.state) - (self._q_func(input_tensor) - log_prob)) ** 2
         loss = 1/2 * error.mean()
 
         self._optim.zero_grad()
@@ -141,6 +141,19 @@ class TargetValueFunction:
     def __call__(self, state : Tensor) -> Tensor:
         return self._v_tar(state)
 
+class NotGuessedVfunc:
+    """Will give the value of v based on equation 3"""
+
+    def upload_funcs(self, q_func : 'QFunction', actor : 'Actor'):
+        self._q_func = q_func
+        self._actor = actor
+
+    def __call__(self, state : Tensor) -> None:
+        """Based on equation 3"""
+        action, log_prob = self._actor(state)
+        input_tensor = torch.cat((state, action), dim = 1)
+
+        return self._q_func(input_tensor) - log_prob
 
 class QModel(BaseNN):
     """Will be the model representing a q function.
@@ -313,18 +326,18 @@ def train(gm : gym.Env, len_state : int , len_output : int, * , reward_scale : f
     writer = SummaryWriter() 
 
     #Initialize all networks
-    target_v = TargetValueFunction()
-    q_func = QFunction(QModel(len_state + len_output, 1, target_v_func=target_v),
-                       QModel(len_state + len_output, 1, target_v_func=target_v))
+    v_func = NotGuessedVfunc()
+    q_func = QFunction(QModel(len_state + len_output, 1, target_v_func=v_func),
+                       QModel(len_state + len_output, 1, target_v_func=v_func))
     actor = Actor(len_state, len_output, q_function=q_func)
-    v_func = ValueFunction(len_state, 1, q_function=q_func, actor=actor)
-    target_v.upload_v_func(v_func)
+    #v_func = ValueFunction(len_state, 1, q_function=q_func, actor=actor)
+    v_func.upload_funcs(q_func, actor)
 
     q_func.to(_DEVICE)
     actor.to(_DEVICE)
-    v_func.to(_DEVICE)
+    #v_func.to(_DEVICE)
 
-    list_networks = [v_func, q_func, actor, target_v]
+    list_networks = [q_func, actor]#[v_func, q_func, actor, target_v]
     #list_networks = [v_func, q_func, actor, target_v] This list should be used if training actor
     
     replay_buffer = MemoryBuffer()
