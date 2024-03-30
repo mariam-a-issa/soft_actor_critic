@@ -150,10 +150,12 @@ class NotGuessedVfunc:
 
     def __call__(self, state : Tensor) -> None:
         """Based on equation 3"""
-        action, log_prob = self._actor(state)
-        input_tensor = torch.cat((state, action), dim = 1)
+        with torch.no_grad():
+            action, log_prob = self._actor(state)
+            input_tensor = torch.cat((state, action), dim = 1)
+            q_value = self._q_func(input_tensor)
 
-        return self._q_func(input_tensor) - log_prob
+        return q_value - log_prob
 
 class QModel(BaseNN):
     """Will be the model representing a q function.
@@ -173,9 +175,12 @@ class QModel(BaseNN):
     
     def update_parameters(self, trans : Transition) -> None:
         """Update parameters according to equations 7 and 8"""
-        input_tensor = torch.cat((trans.state, trans.action), dim = 1)
 
-        error : Tensor = (self(input_tensor) - (trans.reward + GAMMA  * (1- trans.done) * self._v_func(trans.next_state))) ** 2
+        with torch.no_grad():
+            input_tensor = torch.cat((trans.state, trans.action), dim = 1)
+            v_value = self._v_func(trans.next_state)
+        
+        error : Tensor = (self(input_tensor) - (trans.reward + GAMMA  * (1- trans.done) * v_value)) ** 2
         loss = 1/2 * error.mean()
 
         self._optim.zero_grad()
@@ -256,8 +261,12 @@ class Actor(BaseNN):
         dist = self._dist(trans.state)
         actions = dist.rsample() #Will do the reparamaterization trick for us
         actions, log_probs = self._squash_output(actions, dist)
-        input_tensor = torch.cat((trans.state, actions), dim=1)
-        error : Tensor = log_probs - self._q_function(input_tensor)
+
+        with torch.no_grad():
+            input_tensor = torch.cat((trans.state, actions), dim=1)
+            q_value = self._q_function(input_tensor)
+                                   
+        error : Tensor = log_probs - q_value
         loss = error.mean()
 
         self._optim.zero_grad()
