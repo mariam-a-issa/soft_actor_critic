@@ -99,14 +99,17 @@ class ValueFunction(BaseNN):
         input_tensor = torch.cat((trans.state, actions), dim = 1)
 
         #For a regularization term which was included Haarnoja github implementation
-        data_s = actions.shape[-1]
-        num_batches = actions.shape[0]
-        policy_prior = MultivariateNormal(
-            loc=torch.zeros(data_s).unsqueeze(0).repeat(num_batches, 1),
-            covariance_matrix=torch.eye(data_s).unsqueeze(0).repeat(num_batches, 1, 1))
-        policy_prior_log_probs = policy_prior.log_prob(actions)
 
-        error : Tensor = (self(trans.state) - (self._q_func(input_tensor) - log_prob)) ** 2
+        with torch.no_grad():
+            data_s = actions.shape[-1]
+            num_batches = actions.shape[0]
+            policy_prior = MultivariateNormal(
+                loc=torch.zeros(data_s).unsqueeze(0).repeat(num_batches, 1),
+                covariance_matrix=torch.eye(data_s).unsqueeze(0).repeat(num_batches, 1, 1))
+            policy_prior_log_probs = policy_prior.log_prob(actions)
+            actual_v_value = self._q_func(input_tensor) - log_prob
+
+        error : Tensor = (self(trans.state) - actual_v_value) ** 2
         loss = 1/2 * error.mean()
 
         self._optim.zero_grad()
@@ -243,7 +246,7 @@ class Actor(BaseNN):
             yield from self._mean_lin.parameters()
             yield from self._covar_lin.parameters()
 
-        self._optim = optim.Adam(all_params(), STEP_ACTOR, weight_decay=ACTOR_WEIGHT_DECAY) #weight decay is for l2 regularization which I think the github code uses I am not 100% though
+        self._optim = optim.Adam(all_params(), STEP_ACTOR) #, weight_decay=ACTOR_WEIGHT_DECAY) #weight decay is for l2 regularization which I think the github code uses I am not 100% though
 
         self._num_updates = 0
 
@@ -335,19 +338,19 @@ def train(gm : gym.Env, len_state : int , len_output : int, * , reward_scale : f
     writer = SummaryWriter() 
 
     #Initialize all networks
-    v_func = NotGuessedVfunc()
-    q_func = QFunction(QModel(len_state + len_output, 1, target_v_func=v_func),
-                       QModel(len_state + len_output, 1, target_v_func=v_func))
+    target_v = TargetValueFunction()
+    q_func = QFunction(QModel(len_state + len_output, 1, target_v_func=target_v),
+                       QModel(len_state + len_output, 1, target_v_func=target_v))
     actor = Actor(len_state, len_output, q_function=q_func)
-    #v_func = ValueFunction(len_state, 1, q_function=q_func, actor=actor)
-    v_func.upload_funcs(q_func, actor)
+    v_func = ValueFunction(len_state, 1, q_function=q_func, actor=actor)
+    target_v.upload_v_func(v_func)
 
     q_func.to(_DEVICE)
     actor.to(_DEVICE)
-    #v_func.to(_DEVICE)
+    v_func.to(_DEVICE)
 
-    list_networks = [q_func, actor]#[v_func, q_func, actor, target_v]
-    #list_networks = [v_func, q_func, actor, target_v] This list should be used if training actor
+    #list_networks = [q_func, actor]
+    list_networks = [v_func, q_func, actor, target_v] #This list should be used if training actor
     
     replay_buffer = MemoryBuffer()
     num_games = 0
