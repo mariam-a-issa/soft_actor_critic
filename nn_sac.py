@@ -95,18 +95,19 @@ class ValueFunction(BaseNN):
 
     def update_parameters(self, trans : Transition) -> None:
         """Use equation 5 to update"""
-        actions, log_prob = self._actor(trans.state)
-        input_tensor = torch.cat((trans.state, actions), dim = 1)
-
-        #For a regularization term which was included Haarnoja github implementation
 
         with torch.no_grad():
+            actions, log_prob = self._actor(trans.state)
+            input_tensor = torch.cat((trans.state, actions), dim = 1)
+
+            #For a regularization term which was included Haarnoja github implementation
             data_s = actions.shape[-1]
             num_batches = actions.shape[0]
             policy_prior = MultivariateNormal(
                 loc=torch.zeros(data_s).unsqueeze(0).repeat(num_batches, 1),
                 covariance_matrix=torch.eye(data_s).unsqueeze(0).repeat(num_batches, 1, 1))
             policy_prior_log_probs = policy_prior.log_prob(actions)
+
             actual_v_value = self._q_func(input_tensor) - log_prob
 
         error : Tensor = (self(trans.state) - actual_v_value) ** 2
