@@ -380,7 +380,6 @@ def train(gm : gym.Env, len_state : int , len_output : int, * , reward_scale : f
 
     state = gm.reset()[0]
     action, _ = actor(tensor(state, device=_DEVICE, dtype=torch.float32)) #can use random action torch.FloatTensor(1).uniform_(-2.0, 2.0)
-    unscaled_action = unscale_action(gm.action_space, action.clone().detach().cpu().numpy())
 
     total_return = 0
 
