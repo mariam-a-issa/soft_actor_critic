@@ -60,10 +60,25 @@ class BaseNN(nn.Module):
                                 nn.Linear(self._hidden_size, self._hidden_size),
                                 nn.ReLU(),
                                 nn.Linear(self._hidden_size, self.output_size))
+        
+        self.loss : Tensor = None
+        self.optim : optim.Optimizer = None
 
     def forward(self, x : Tensor) -> Tensor:
         """Using batchs x should be N x D where N is the number of batches"""
         return self.layers(x)
+    
+    def update_parameters(self):
+        """Will update the parameters using the loss and the optim"""
+
+        if self.loss is None:
+            raise ValueError('The loss was not defined')
+        elif self.optim is None:
+            raise ValueError('The optimizer was not created')
+
+        self.optim.zero_grad()
+        self.loss.backward()
+        self.optim.step()
     
     def save(self, file_name : str='best_weights.pt') -> None:
         """Will save the model in the folder 'model' in the dir that the script was run in."""
@@ -87,14 +102,14 @@ class ValueFunction(BaseNN):
 
     def __init__(self, *args, q_function : 'QFunction', actor : 'Actor') -> None:
         super().__init__(*args)
-        self._optim = optim.Adam(self.parameters(), STEP_V)
+        self.optim = optim.Adam(self.parameters(), STEP_V)
         self._actor = actor
         self._q_func = q_function
 
         self._num_updates = 1 #For logging
 
-    def update_parameters(self, trans : Transition) -> None:
-        """Use equation 5 to update"""
+    def find_loss(self, trans : Transition) -> None:
+        """Use equation 5 to find loss"""
 
         with torch.no_grad():
             actions, log_prob = self._actor(trans.state)
@@ -111,13 +126,9 @@ class ValueFunction(BaseNN):
             actual_v_value = self._q_func(input_tensor) - log_prob
 
         error : Tensor = (self(trans.state) - actual_v_value) ** 2
-        loss = 1/2 * error.mean()
+        self.loss = 1/2 * error.mean()
 
-        self._optim.zero_grad()
-        loss.backward()
-        self._optim.step()
-
-        writer.add_scalar('Value loss', loss, self._num_updates)
+        writer.add_scalar('Value loss', self.loss, self._num_updates)
         self._num_updates += 1
 
 
@@ -134,7 +145,11 @@ class TargetValueFunction:
         self._v_tar = deepcopy(v_func)
         self._v_func = v_func
 
-    def update_parameters(self, trans : Transition) -> None:
+    def find_loss(self, trans : Transition) -> None:
+        """No loss to find for Target update"""
+        pass
+
+    def update_parameters(self) -> None:
         """Update parameters according to algorithim 1"""
         with torch.no_grad():
             for t_param, v_param in zip(self._v_tar.parameters(), self._v_func.parameters()):
@@ -145,21 +160,6 @@ class TargetValueFunction:
     def __call__(self, state : Tensor) -> Tensor:
         return self._v_tar(state)
 
-class NotGuessedVfunc:
-    """Will give the value of v based on equation 3"""
-
-    def upload_funcs(self, q_func : 'QFunction', actor : 'Actor'):
-        self._q_func = q_func
-        self._actor = actor
-
-    def __call__(self, state : Tensor) -> None:
-        """Based on equation 3"""
-        with torch.no_grad():
-            action, log_prob = self._actor(state)
-            input_tensor = torch.cat((state, action), dim = 1)
-            q_value = self._q_func(input_tensor)
-
-        return q_value - log_prob
 
 class QModel(BaseNN):
     """Will be the model representing a q function.
@@ -170,28 +170,23 @@ class QModel(BaseNN):
     def __init__(self, *args, target_v_func : TargetValueFunction) -> None:
         super().__init__(*args)
         self._v_func = target_v_func
-        self._optim = optim.Adam(self.parameters(), STEP_Q)
+        self.optim = optim.Adam(self.parameters(), STEP_Q)
 
         self._network_id = QModel._next_id
         QModel._next_id += 1
         self._num_updates = 1
 
-    
-    def update_parameters(self, trans : Transition) -> None:
-        """Update parameters according to equations 7 and 8"""
+    def find_loss(self, trans : Transition) -> None:
+        """Find loss according to equations 7 and 8"""
 
         with torch.no_grad():
             input_tensor = torch.cat((trans.state, trans.action), dim = 1)
             v_value = self._v_func(trans.next_state)
         
         error : Tensor = (self(input_tensor) - (trans.reward + GAMMA  * (1- trans.done) * v_value)) ** 2
-        loss = 1/2 * error.mean()
+        self.loss = 1/2 * error.mean()
 
-        self._optim.zero_grad()
-        loss.backward()
-        self._optim.step()
-
-        writer.add_scalar(f'Q function {self._network_id} loss', loss, self._num_updates)
+        writer.add_scalar(f'Q function {self._network_id} loss', self.loss, self._num_updates)
         self._num_updates += 1
 
     def extra_info(self) -> str:
@@ -211,10 +206,15 @@ class QFunction:
         """x should be the action concatenated to the state"""
         return torch.min(self._q1(x), self._q2(x))
 
-    def update_parameters(self, trans : Transition) -> None:
-        """Will update both q models of the q functions"""
+    def find_loss(self, trans : Transition) -> None:
+        """Will find loss of both q models of the q functions"""
         for q in self._list_q_funcs():
-            q.update_parameters(trans)
+            q.find_loss(trans)
+
+    def update_parameters(self) -> None:
+        """Will update the parameters of the q models"""
+        for q in self._list_q_funcs():
+            q.update_parameters()
 
     def to(self, device) -> None:
         """Will move both of the q models to the device"""
@@ -247,7 +247,7 @@ class Actor(BaseNN):
             yield from self._mean_lin.parameters()
             yield from self._covar_lin.parameters()
 
-        self._optim = optim.Adam(all_params(), STEP_ACTOR) #, weight_decay=ACTOR_WEIGHT_DECAY) #weight decay is for l2 regularization which I think the github code uses I am not 100% though
+        self.optim = optim.Adam(all_params(), STEP_ACTOR) #, weight_decay=ACTOR_WEIGHT_DECAY) #weight decay is for l2 regularization which I think the github code uses I am not 100% though
 
         self._num_updates = 0
 
@@ -259,8 +259,8 @@ class Actor(BaseNN):
 
         return self._squash_output(action, dist)
 
-    def update_parameters(self, trans : Transition) -> None:
-        """Updates the parameters using equation 12"""
+    def find_loss(self, trans : Transition) -> None:
+        """Finds the loss using equation 12"""
 
         dist = self._dist(trans.state)
         actions = dist.rsample() #Will do the reparamaterization trick for us
@@ -271,13 +271,9 @@ class Actor(BaseNN):
             q_value = self._q_function(input_tensor)
                                    
         error : Tensor = log_probs - q_value
-        loss = error.mean()
+        self.loss = error.mean()
 
-        self._optim.zero_grad()
-        loss.backward()
-        self._optim.step()
-
-        writer.add_scalar('Actor loss', loss, self._num_updates)
+        writer.add_scalar('Actor loss', self.loss, self._num_updates)
         self._num_updates += 1
 
     def _squash_output(self, action : Tensor, dist : MultivariateNormal) -> tuple[Tensor, Tensor]:
@@ -383,8 +379,12 @@ def train(gm : gym.Env, len_state : int , len_output : int, * , reward_scale : f
             replay_buffer.add_data(trans)
             
             batch = replay_buffer.sample()
+
             for net in list_networks:
-                net.update_parameters(batch)
+                net.find_loss(batch)
+
+            for net in list_networks:
+                net.update_parameters()
 
             episodes += 1
 
