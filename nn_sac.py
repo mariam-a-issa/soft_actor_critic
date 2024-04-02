@@ -123,7 +123,7 @@ class ValueFunction(BaseNN):
                 covariance_matrix=torch.eye(data_s).unsqueeze(0).repeat(num_batches, 1, 1))
             policy_prior_log_probs = policy_prior.log_prob(actions)
 
-            actual_v_value = self._q_func(input_tensor) - log_prob
+            actual_v_value = self._q_func(input_tensor) - log_prob + policy_prior_log_probs
 
         error : Tensor = (self(trans.state) - actual_v_value) ** 2
         self.loss = 1/2 * error.mean()
@@ -247,7 +247,7 @@ class Actor(BaseNN):
             yield from self._mean_lin.parameters()
             yield from self._covar_lin.parameters()
 
-        self.optim = optim.Adam(all_params(), STEP_ACTOR) #, weight_decay=ACTOR_WEIGHT_DECAY) #weight decay is for l2 regularization which I think the github code uses I am not 100% though
+        self.optim = optim.Adam(all_params(), STEP_ACTOR, weight_decay=ACTOR_WEIGHT_DECAY) #weight decay is for l2 regularization which I think the github code uses I am not 100% though
 
         self._num_updates = 0
 
@@ -284,7 +284,6 @@ class Actor(BaseNN):
         log_probs : Tensor = (dist.log_prob(action) - torch.sum(torch.log(1 - torch.tanh(action) ** 2 + EPS), dim = -1)).unsqueeze(-1)
 
         return tan_action, log_probs
-        #return action, dist.log_prob(action).unsqueeze(dim = -1)
 
     def _dist(self, x : Tensor) -> MultivariateNormal:
         """Will create a distribution for either a single or batch of a state """
@@ -326,6 +325,32 @@ class MemoryBuffer:
         """Will add the data from the single transition into the buffer"""
         self._memory.append(trans)
 
+#Scaling was used from stable_baselines
+def scale_action(action_space, action):
+    """
+    Rescale the action from [low, high] to [-1, 1]
+    (no need for symmetric action space)
+
+    :param action_space: (gym.spaces.box.Box)
+    :param action: (np.ndarray)
+    :return: (np.ndarray)
+    """
+    low, high = action_space.low, action_space.high
+    return 2.0 * ((action - low) / (high - low)) - 1.0
+
+
+def unscale_action(action_space, scaled_action):
+    """
+    Rescale the action from [-1, 1] to [low, high]
+    (no need for symmetric action space)
+
+    :param action_space: (gym.spaces.box.Box)
+    :param action: (np.ndarray)
+    :return: (np.ndarray)
+    """
+    low, high = action_space.low, action_space.high
+    return low + (0.5 * (scaled_action + 1.0) * (high - low))
+
 def train(gm : gym.Env, len_state : int , len_output : int, * , reward_scale : float, max_game : int=None, max_steps : int=None, extra_save_info : str=None) -> None:
     """Will train an agent with a continuous state space of dimensionality len_input and
     a continuous action space of dimensionality of len_output. It will train indefinitely until there
@@ -355,12 +380,14 @@ def train(gm : gym.Env, len_state : int , len_output : int, * , reward_scale : f
 
     state = gm.reset()[0]
     action, _ = actor(tensor(state, device=_DEVICE, dtype=torch.float32)) #can use random action torch.FloatTensor(1).uniform_(-2.0, 2.0)
+    unscaled_action = unscale_action(gm.action_space, action.clone().detach().cpu().numpy())
 
     total_return = 0
 
     try:
         while (max_game is None or max_game > num_games) and (max_steps is None or max_steps > episodes):
-            next_state, reward, terminated, truncated, _ = gm.step(action.clone().detach().cpu().numpy())
+            unscaled_action = unscale_action(gm.action_space, action.clone().detach().cpu().numpy())
+            next_state, reward, terminated, truncated, _ = gm.step(unscaled_action)
             done = terminated or truncated
             total_return += reward
             reward *= reward_scale
