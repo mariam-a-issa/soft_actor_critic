@@ -351,13 +351,13 @@ def unscale_action(action_space, scaled_action):
     low, high = action_space.low, action_space.high
     return low + (0.5 * (scaled_action + 1.0) * (high - low))
 
-def train(gm : gym.Env, len_state : int , len_output : int, * , reward_scale : float, max_game : int=None, max_steps : int=None, extra_save_info : str=None) -> None:
+def train(gm : gym.Env, len_state : int , len_output : int, * , reward_scale : float, max_game : int=None, max_steps : int=None, extra_save_info : str=None, log_dir :str=None) -> None:
     """Will train an agent with a continuous state space of dimensionality len_input and
     a continuous action space of dimensionality of len_output. It will train indefinitely until there
     is an exception (KeyboardInterrupt) or when the agent has been trained for a defined amount of max_game"""
 
     global writer #Should be fixed later
-    writer = SummaryWriter() 
+    writer = SummaryWriter(log_dir=log_dir) 
 
     #Initialize all networks
     target_v = TargetValueFunction()
