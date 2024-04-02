@@ -389,8 +389,8 @@ def train(gm : gym.Env, len_state : int , len_output : int, * , reward_scale : f
             episodes += 1
 
             if done:
-                state = gm.reset()[0]
-                action, _ = actor(tensor(state, device=_DEVICE, dtype=torch.float32)) #can use random action torch.FloatTensor(1).uniform_(-2.0, 2.0)
+                next_state = gm.reset()[0]
+                next_action, _ = actor(tensor(next_state, device=_DEVICE, dtype=torch.float32)) #can use random action torch.FloatTensor(1).uniform_(-2.0, 2.0)
                 num_games += 1
                 average_return = total_return / num_games
                 writer.add_scalar('Average return', average_return, episodes)
