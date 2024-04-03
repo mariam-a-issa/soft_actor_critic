@@ -181,9 +181,9 @@ class QModel(BaseNN):
 
         with torch.no_grad():
             input_tensor = torch.cat((trans.state, trans.action), dim = 1)
-            v_value = self._v_func(trans.next_state)
+            q_backup = trans.reward + GAMMA  * (1- trans.done) * self._v_func(trans.next_state)
         
-        error : Tensor = (self(input_tensor) - (trans.reward + GAMMA  * (1- trans.done) * v_value)) ** 2
+        error : Tensor = (self(input_tensor) - q_backup) ** 2
         self.loss = 1/2 * error.mean()
 
         writer.add_scalar(f'Q function {self._network_id} loss', self.loss, self._num_updates)
