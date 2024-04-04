@@ -290,16 +290,14 @@ class Actor(BaseNN):
 
         mean = self._mean_lin(self.layers(x))
         covar = self._covar_lin(self.layers(x))
-        covar = covar.pow(2) #May be redundent with the clamp below
-
+        covar = torch.clamp(covar, EPS, 1)
+    
         if len(covar.shape) == 2: #When dealing with batches
             covar_m = torch.diag(covar[0]).unsqueeze(dim = 0)
             for cv in covar[1:]:
                 covar_m = torch.cat((covar_m, torch.diag(cv).unsqueeze(dim = 0)), dim = 0)
         else:
             covar_m = torch.diag(covar)
-
-        covar_m = torch.clamp(covar_m, EPS, 1) #The std should be clamped between these two values
 
         return MultivariateNormal(mean, covar_m)
 
