@@ -63,11 +63,11 @@ class EXPEncoder:
     def __init__(self, d : int):
         """Will create an encoder that will work for vectors that have d dimensionality"""
         
-        self._s_hdvec = torch.rand(HYPER_DIM, dtype=torch.float32).unsqueeze(0)
+        self._s_hdvec = torch.rand(HYPER_DIM, dtype=torch.float32, device=_DEVICE).unsqueeze(0)
         for _ in range(d - 1):
-            self._s_hdvec = torch.cat((self._s_hdvec, torch.rand(HYPER_DIM, dtype=torch.float32).unsqueeze(0)), dim = 0)
+            self._s_hdvec = torch.cat((self._s_hdvec, torch.rand(HYPER_DIM, dtype=torch.float32, device=_DEVICE).unsqueeze(0)), dim = 0)
         
-        self._bias = torch.rand(HYPER_DIM, dtype=torch.float32) * 2 * pi
+        self._bias = torch.rand(HYPER_DIM, dtype=torch.float32, device=_DEVICE) * 2 * pi
         self.d = d #Will be used by functions to know how to create their models
 
     def __call__(self, state : Tensor) -> Tensor:
@@ -223,8 +223,8 @@ class RBFEncoder:
         self._out_size = out_size
 
         # TODO: may need change
-        self._s_hdvec = torch.randn(in_size, out_size) / in_size #Why normalize with in_size
-        self._bias = 2 * pi * torch.randn(out_size)
+        self._s_hdvec = torch.randn(in_size, out_size, dtype=torch.float32, device=_DEVICE) / in_size #Why normalize with in_size
+        self._bias = 2 * pi * torch.randn(out_size, dtype=torch.float32, device=_DEVICE)
   
 
     def __call__(self, x: torch.Tensor) -> torch.Tensor:
