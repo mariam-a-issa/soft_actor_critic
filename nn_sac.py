@@ -439,6 +439,7 @@ def train(gm : gym.Env, len_state : int , len_output : int, * , reward_scale : f
         file_name = Path(str(file_name) + '.pt')
         actor.save(file_name)
         gm.close()
+        writer.flush()
 
 
 if __name__ == '__main__':
