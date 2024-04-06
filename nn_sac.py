@@ -2,6 +2,7 @@ from collections import namedtuple, deque
 import random
 from copy import deepcopy
 import os
+from pathlib import Path
 
 import torch
 from torch import nn, optim, tensor, Tensor
@@ -80,16 +81,16 @@ class BaseNN(nn.Module):
         self.loss.backward()
         self.optim.step()
     
-    def save(self, file_name : str='best_weights.pt') -> None:
+    def save(self, file_name ='best_weights.pt') -> None:
         """Will save the model in the folder 'model' in the dir that the script was run in."""
 
         folder_name = type(self).__name__ + self.extra_info()
 
-        model_folder_path = './model/' + folder_name
+        model_folder_path = Path('./model/' + folder_name)
+        file_dir = Path(os.path.join(model_folder_path, file_name))
 
-        if not os.path.exists(model_folder_path):
-            os.makedirs(model_folder_path)
-        file_dir = os.path.join(model_folder_path, file_name)
+        if not os.path.exists(file_dir.parent):
+            os.makedirs(file_dir.parent)
 
         torch.save(self.state_dict(), file_dir)
 
@@ -357,7 +358,11 @@ def train(gm : gym.Env, len_state : int , len_output : int, * , reward_scale : f
     is an exception (KeyboardInterrupt) or when the agent has been trained for a defined amount of max_game"""
 
     global writer #Should be fixed later
-    writer = SummaryWriter(log_dir=log_dir) 
+    if log_dir is not None:
+        new_log_dir = f'runs/{log_dir}'
+    else:
+        new_log_dir = None
+    writer = SummaryWriter(log_dir=new_log_dir) 
 
     #Initialize all networks
     target_v = TargetValueFunction()
@@ -424,12 +429,14 @@ def train(gm : gym.Env, len_state : int , len_output : int, * , reward_scale : f
             state = next_state
             action = next_action
     finally:
-
-        file_name = 'best_weights'
+        
+        if log_dir is not None:
+            file_name = Path(f'{log_dir}/best_weights')
+        else:
+            file_name = Path('best_weights')
         if extra_save_info is not None:
-            file_name += extra_save_info
-        file_name += '.pt'
-
+            file_name = Path(str(file_name) + extra_save_info)
+        file_name = Path(str(file_name) + '.pt')
         actor.save(file_name)
         gm.close()
 
