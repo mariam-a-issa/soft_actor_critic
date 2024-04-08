@@ -30,6 +30,7 @@ else:
     device = 'cpu'
 
 _DEVICE = torch.device(device)
+torch.set_default_device(_DEVICE)
 
 class Buffer:
 
