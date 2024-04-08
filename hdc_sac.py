@@ -2,6 +2,7 @@ from collections import namedtuple, deque
 from math import pi
 import random
 import os
+from pathlib import Path
 
 import torch
 from torch import Tensor, tensor, nn, optim
@@ -9,14 +10,15 @@ from torch.distributions import MultivariateNormal
 from torch.utils.tensorboard import SummaryWriter
 import gym
 
-HYPER_DIM = 8192 #The dimensionality of the hypervectors
+HYPER_DIM = 4000 #The dimensionality of the hypervectors
 V_LR = .001
 Q_LR = .001
 A_LR  = .001
 TAU = .005
 DISCOUNT = .99
 BUFFER_SIZE = 10 ** 6
-SAMPLE_SIZE = 256
+SAMPLE_SIZE = 256 
+#Clamps have to be looked at
 
 EPS = 1e-6
 
@@ -24,11 +26,8 @@ Transition = namedtuple('Transition', ['state', 'action', 'next_state', 'next_ac
 
 if torch.cuda.is_available():
     device = f'cuda:{torch.cuda.current_device()}'
-#elif torch.backends.mps.is_available():
-#  device = 'mps'
 else:
     device = 'cpu'
-#device = 'cpu'
 
 _DEVICE = torch.device(device)
 
@@ -70,9 +69,23 @@ class EXPEncoder:
         self._bias = torch.rand(HYPER_DIM, dtype=torch.float32, device=_DEVICE) * 2 * pi
         self.d = d #Will be used by functions to know how to create their models
 
-    def __call__(self, state : Tensor) -> Tensor:
+    def __call__(self, v : Tensor) -> Tensor:
         """Will return the encoder hypervector. State needs the same dimensionality that was used to create the encoder"""
-        return torch.exp(1j * (torch.matmul(state, self._s_hdvec) + self._bias))
+        if len(v.shape) == 1:
+            return torch.exp(1j * (torch.matmul(v, self._s_hdvec) + self._bias))
+        
+        #Only batches of b_dim x v_dim
+        assert len(v.shape) == 2
+
+        batch_dim = v.shape[0]
+
+        new_v = v.unsqueeze(1) # b_dim x 1 x v_dim
+        
+        batch_vector = self._s_hdvec.repeat(batch_dim, 1, 1) #b_dim x v_dim x hyper_v_dim
+        batch_bias = self._bias.repeat(batch_dim, 1) #b_dim x hyper_v_dim
+        
+        #bmm is batch matrix multiplication
+        return torch.exp(1j * (torch.bmm(new_v, batch_vector).squeeze(1) + batch_bias)) #need to squeeze dim 1 to go from b_dim x 1 x hyper_v_dim -> b_dim x hyper_dim
 
 
 class HDModel:
@@ -84,8 +97,22 @@ class HDModel:
 
     def __call__(self, x : Tensor) -> Tensor:
         """Will return a single value off of the vector x which should have a dimensioanilty of HYPER_DIM"""
-        return torch.real((torch.dot(torch.conj(x), self._m_hdvec)) / HYPER_DIM)
-    
+
+        if len(x.shape) == 1:
+            return torch.real((torch.dot(torch.conj(x), self._m_hdvec)) / HYPER_DIM)
+        
+        #Only handles batches of dim b_dim x h_dim_dim
+        assert len(x.shape) == 2
+
+        batch_size = x.shape[0]
+
+        batch_model = self._m_hdvec.unsqueeze(0).repeat(batch_size, 1).unsqueeze(-1) #Will create a tensor of b_dim x 1 x h_dim 
+        x_hd = x.unsqueeze(1) #Will create a tensor of b_size x h_dim x 1
+
+        #bmm will do a batch matrix multiplication. Allows for batch dot product implementation
+        return torch.real((torch.bmm(torch.conj(x_hd), batch_model)) / HYPER_DIM).squeeze(1) #Will squeeze from b_size x 1 -> b_size
+
+
     def params(self) -> Tensor:
         """Will return the parameters of the network which is just the hypervector"""
         return self._m_hdvec
@@ -100,7 +127,7 @@ class QModel(HDModel):
 
     _next_id = 1
 
-    def __init__(self, state_en : EXPEncoder, action_en : EXPEncoder, target_v : 'TargetValueFunction') -> None:
+    def __init__(self,state_en : EXPEncoder, action_en : EXPEncoder, target_v : 'TargetValueFunction') -> None:
         super().__init__()
         self._t_v = target_v
         self._state_en = state_en
@@ -108,107 +135,86 @@ class QModel(HDModel):
         self._model_id = QModel._next_id
         QModel._next_id += 1
         self._num_updates = 0
-
-    def __call__(self, state : Tensor, action : Tensor) -> Tensor:
-        """Will create a hypervector that represents both the state and the action and then call the model bassed off of this.
-        The state and action should not be encoded and have their respective dimensions"""
-        if len(state.shape) == 1:
-            state_action_hdvec = torch.add(self._state_en(state), self._action_en(action))
-            return super().__call__(state_action_hdvec)
-        
-        #Make a vector of the q_values
-        state_action_hdvec = torch.add(self._state_en(state[0]), self._action_en(action[0]))
-        q_vals = super().__call__(state_action_hdvec).unsqueeze(dim=0)
-
-        for s, a in zip(state, action):
-            sa_hdvec = torch.add(self._state_en(s), self._action_en(a))
-            q_vals = torch.cat((q_vals, super().__call__(sa_hdvec).unsqueeze(dim=0)), dim=0)
-
-        return q_vals
-
     
     def update(self, buffer : Buffer) -> Tensor:
         """Will update the q functions using equation 9 and algorithim 1 of the SAC paper"""
 
         sample = buffer.sample()
-        q_vals = self(sample.state, sample.action)
-        v_vals = self._t_v(sample.next_state)
 
-        average_loss = 0
-        total_losses = len(sample)
-        for r, q, v, d in zip(sample.reward, q_vals, v_vals, sample.done):
-            loss = q - (r + (1-d) * DISCOUNT * v)
-            new_params = self.params() + Q_LR * (loss) * self.params()
-            self.update_params(new_params)
-            average_loss += loss
+        sa_hdv = self._state_en(sample.state) + self._action_en(sample.action)
+        next_s_hdv = self._state_en(sample.state)
 
-        average_loss /= total_losses
+        q_vals = self(sa_hdv)
+        v_vals = self._t_v(next_s_hdv)
+
+        batch_loss : Tensor = q_vals - (sample.reward + (1-sample.done) * DISCOUNT * v_vals) # b_size x 1
+
+        update = Q_LR * batch_loss * sa_hdv #b_size x sa_hdv_size
+        self.update_params(self.params() + update.sum(dim=0)) #sum(dim=0) to condense elements of each batch to hypervector then apply update
+
+        average_loss = batch_loss.mean()
         self._num_updates +=1
 
         writer.add_scalar(f'Q func loss {self._model_id}', average_loss, self._num_updates)
 
 
 class QFunction:
-    def __init__(self, state_en : EXPEncoder, action_en : EXPEncoder, target_v : 'TargetValueFunction') -> None:
+    def __init__(self, * , state_en : EXPEncoder, action_en : EXPEncoder, target_v : 'TargetValueFunction') -> None:
         self._q1 = QModel(state_en, action_en, target_v)
         self._q2 = QModel(state_en, action_en, target_v)
+        self._state_en = state_en
+        self._action_en = action_en
 
-    def __call__(self, state : Tensor, action : Tensor) -> Tensor:
-        """Will return the q function that has the minimum value according to the SAC paper"""
-        return torch.min(self._q1(state, action), self._q2(state, action))
+    def __call__(self, sa_hdv : Tensor) -> Tensor:
+        """Will return the q function that has the minimum value according to the SAC paper
+        sa_hdv is the hypervector that represents the action and the state"""
+        return torch.min(self._q1(sa_hdv), self._q2(sa_hdv))
     
     def update(self, trans : Transition) -> None:
         """Will update the both of the q models in the q function"""
         self._q1.update(trans)
         self._q2.update(trans)
 
+    def encode(self, state : Tensor, action : Tensor) -> Tensor:
+        """Will use the QFunctions state and action encoders and create an encoded state/action vector"""
+        return self._state_en(state) + self._action_en(action) 
+
 class ValueFunction(HDModel):
-    def __init__(self, encoder : EXPEncoder, q_func : QFunction, actor : 'Actor') ->None:
+    def __init__(self, * , state_en : EXPEncoder, action_en : EXPEncoder, q_func : QFunction, actor : 'Actor') ->None:
         super().__init__()
-        self._encoder = encoder
+        self._state_en = state_en
+        self._action_en = action_en
         self._q_func = q_func
         self._actor = actor
         self._num_updates = 0
 
-    def __call__(self, state : Tensor) -> Tensor:
-        """Will return the value of the state where state is a vector of state dimensioanlity"""
-        if len(state.shape) == 1:
-            return super().__call__(self._encoder(state))
-        
-        #Make a vector of the v_values
-        v_vals = super().__call__(self._encoder(state[0])).unsqueeze(dim = 0)
-
-        for s in state[1:]:
-            v_vals = torch.cat((v_vals, super().__call__(self._encoder(s)).unsqueeze(dim=0)), dim=0)
-
-        return v_vals
 
     def update(self, buffer : Buffer) -> None:
         """Updates the value function using equation 6 and algorithim 1 on the SAC paper"""
         sample = buffer.sample()
-        actions, log_probs = self._actor(sample.state)
-        q_vals = self._q_func(sample.state, actions)
-        v_vals = self(sample.state)
+        
+        s_hdv = self._state_en(sample.state)
 
-        average_loss = 0
-        num_losses = len(sample)
-        for lp, q, v in zip(log_probs, q_vals, v_vals):
-            loss = v - (q - lp)
-            new_params = self.params() + V_LR * (loss) * self.params()
-            self.update_params(new_params)
-            average_loss += loss
+        action, log_probs = self._actor(sample.state)
+        sa_hdv = s_hdv + self._action_en(action)
 
-        average_loss /= num_losses
-        self._num_updates += 1
+        q_vals = self._q_func(sa_hdv)
+        v_vals = self(s_hdv)
+
+        batch_loss : Tensor = v_vals - (q_vals - log_probs) # b_size x 1
+
+        update = V_LR * batch_loss * s_hdv #b_size x sa_hdv_size
+        self.update_params(self.params() + update.sum(dim=0)) #sum(dim=0) to condense elements of each batch to a single hypervector then apply update
+
+        average_loss = batch_loss.mean()
+        self._num_updates +=1
 
         writer.add_scalar('V func loss', average_loss, self._num_updates)
 
-        
-
 
 class TargetValueFunction(ValueFunction):
-    def __init__(self, encoder : EXPEncoder):
-        super().__init__(encoder, None, None)
+    def __init__(self):
+        super().__init__(state_en=None, action_en=None, q_func=None, actor=None)
         
     def upload_v_func(self, v_func : ValueFunction):
         self._v_func = v_func
@@ -222,26 +228,40 @@ class RBFEncoder:
         self._in_size = in_size
         self._out_size = out_size
 
-        # TODO: may need change
         self._s_hdvec = torch.randn(in_size, out_size, dtype=torch.float32, device=_DEVICE) / in_size #Why normalize with in_size
         self._bias = 2 * pi * torch.randn(out_size, dtype=torch.float32, device=_DEVICE)
   
 
-    def __call__(self, x: torch.Tensor) -> torch.Tensor:
-        # TODO: need to check dimension of x
-        x = x @ self._s_hdvec + self._bias
-        x = torch.cos(x)
-        return x
+    def __call__(self, v: torch.Tensor) -> torch.Tensor:
+        if len(v.shape) == 1:
+            v = v @ self._s_hdvec + self._bias
+            v = torch.cos(v)
+            return v
+        
+        #Only batches with 
+        assert len(v.shape) == 2
+
+        batch_dim = v.shape[0]
+        
+        new_v = v.unsqueeze(1) # b_dim x 1 x v_dim
+        
+        batch_vector = self._s_hdvec.repeat(batch_dim, 1, 1) #b_dim x v_dim x hyper_v_dim
+        batch_bias = self._bias.repeat(batch_dim, 1) #b_dim x hyper_v_dim
+        
+        return torch.cos(torch.bmm(new_v, batch_vector).squeeze(1) + batch_bias)
+
+
+        
 
 class Actor(nn.Module):
 
-    def __init__(self, encoder : RBFEncoder, out_size : int, q_func : QFunction, dim_size = HYPER_DIM):
+    def __init__(self, *, encoder : RBFEncoder, out_size : int, q_func : QFunction, dim_size = HYPER_DIM):
         super().__init__()
         self._encoder = encoder
         self._mean = nn.Linear(dim_size, out_size, bias=False)
         self._covar = nn.Linear(dim_size, out_size, bias=False)
         self._q_func = q_func
-        self._optim = optim.SGD(self.parameters(), lr = A_LR)
+        self._optim = optim.Adam(self.parameters(), lr = A_LR)
         self._num_updates = 0
 
     def forward(self, state: Tensor) -> tuple[Tensor, Tensor]:
@@ -260,7 +280,7 @@ class Actor(nn.Module):
         action, log_probs = self._squash_output(action, dist)
         
         with torch.no_grad():
-            q_value = self._q_func(sample.state, action)
+            q_value = self._q_func(self._q_func.encode(sample.state, action))
 
         loss = (log_probs - q_value).mean()
 
@@ -277,11 +297,11 @@ class Actor(nn.Module):
 
         folder_name = type(self).__name__
 
-        model_folder_path = './model/' + folder_name
+        model_folder_path = Path('./model/' + folder_name)
+        file_dir = Path(os.path.join(model_folder_path, file_name))
 
-        if not os.path.exists(model_folder_path):
-            os.makedirs(model_folder_path)
-        file_dir = os.path.join(model_folder_path, file_name)
+        if not os.path.exists(file_dir.parent):
+            os.makedirs(file_dir.parent)
 
         torch.save(self.state_dict(), file_dir)
         
@@ -300,7 +320,7 @@ class Actor(nn.Module):
 
         mean = self._mean(x)
         covar = self._covar(x)
-        covar = torch.clamp(covar, EPS, 1)
+        covar = torch.clamp(covar, EPS, 20)
     
         if len(covar.shape) == 2: #When dealing with batches
             covar_m = torch.diag(covar[0]).unsqueeze(dim = 0)
@@ -318,17 +338,21 @@ def train(gm : gym.Env, len_state : int , len_output : int, * , reward_scale : f
     is an exception (KeyboardInterrupt) or when the agent has been trained for a defined amount of max_game"""
 
     global writer #Should be fixed later
-    writer = SummaryWriter(log_dir=log_dir)
+    if log_dir is not None:
+        new_log_dir = f'runs/{log_dir}/run{extra_save_info}'
+    else:
+        new_log_dir = None
+    writer = SummaryWriter(log_dir=new_log_dir) 
 
     c_state_encoder = EXPEncoder(len_state)
     action_encoder = EXPEncoder(len_output)
     a_state_encoder = RBFEncoder(len_state)
 
     #Initialize all networks
-    target_v = TargetValueFunction(c_state_encoder)
-    q_func = QFunction(c_state_encoder, action_encoder, target_v)
-    actor = Actor(a_state_encoder, len_output, q_func)
-    v_func = ValueFunction(c_state_encoder, q_func, actor)
+    target_v = TargetValueFunction()
+    q_func = QFunction(state_en=c_state_encoder, action_en=action_encoder, target_v=target_v)
+    actor = Actor(encoder=a_state_encoder, out_size=len_output, q_func=q_func)
+    v_func = ValueFunction(state_en=c_state_encoder, action_en=action_encoder, q_func=q_func, actor=actor)
     target_v.upload_v_func(v_func)
 
 
@@ -381,10 +405,13 @@ def train(gm : gym.Env, len_state : int , len_output : int, * , reward_scale : f
             action = next_action
     finally:
 
-        file_name = 'best_weights'
+        if log_dir is not None:
+            file_name = Path(f'{log_dir}/best_weights')
+        else:
+            file_name = Path('best_weights')
         if extra_save_info is not None:
-            file_name += extra_save_info
-        file_name += '.pt'
+            file_name = Path(str(file_name) + extra_save_info)
+        file_name = Path(str(file_name) + '.pt')
 
         actor.save(file_name)
         gm.close()
