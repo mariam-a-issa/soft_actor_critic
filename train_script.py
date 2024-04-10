@@ -3,7 +3,7 @@ from pathlib import Path
 
 import gym
 
-from hdc_sac import train
+from new_nn_sac import train
 
 def main():
     parser = argparse.ArgumentParser()
@@ -22,7 +22,7 @@ def main():
     else:
         max_steps = float(max_steps)
 
-    for i in range(2):
+    for i in range(3):
         env = gym.make('Hopper-v4')
         train(env, 11, 3, reward_scale=5.0, max_steps=max_steps, extra_save_info=str(i), log_dir=log_dir)
 
