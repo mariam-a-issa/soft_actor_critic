@@ -47,7 +47,7 @@ def train(num_runs) -> None:
 
     writer = SummaryWriter(LOG_DIR + f'/run{num_runs}')
 
-    env = gym.make('CartPole-v1', render_mode = 'human')
+    env = gym.make('CartPole-v1')
 
     agent = NNAgent(
         4,
