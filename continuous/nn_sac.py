@@ -3,10 +3,12 @@ import random
 from copy import deepcopy
 import os
 from pathlib import Path
+import math
 
 import torch
 from torch import nn, optim, tensor, Tensor
-from torch.distributions import MultivariateNormal
+from torch.nn import functional as F
+from torch.distributions import Normal
 from torch.utils.tensorboard import SummaryWriter
 
 import gym
@@ -20,7 +22,9 @@ GAMMA = .99
 BUFFER_SIZE = 10 ** 6
 SAMPLE_SIZE = 256
 HIDDEN_LAYER_SIZE = 256
-ACTOR_WEIGHT_DECAY = 1e-3 #Found regularization in code
+LOG_STD_MAX = 2
+LOG_STD_MIN = -20
+NUM_RUNS = 32
 
 EPS = 1e-6 #So that we do not have a log(0) for the tanh squash of the actor
 
@@ -66,18 +70,6 @@ class BaseNN(nn.Module):
         """Using batchs x should be N x D where N is the number of batches"""
         return self.layers(x)
     
-    def update_parameters(self):
-        """Will update the parameters using the loss and the optim"""
-
-        if self.loss is None:
-            raise ValueError('The loss was not defined')
-        elif self.optim is None:
-            raise ValueError('The optimizer was not created')
-
-        self.optim.zero_grad()
-        self.loss.backward()
-        self.optim.step()
-    
     def save(self, file_name ='best_weights.pt') -> None:
         """Will save the model in the folder 'model' in the dir that the script was run in."""
 
@@ -100,13 +92,13 @@ class ValueFunction(BaseNN):
 
     def __init__(self, *args, q_function : 'QFunction', actor : 'Actor') -> None:
         super().__init__(*args)
-        self.optim = optim.Adam(self.parameters(), STEP_V)
+        self.optim = optim.Adam(self.parameters(), lr=STEP_V)
         self._actor = actor
         self._q_func = q_function
 
         self._num_updates = 1 #For logging
 
-    def find_loss(self, trans : Transition) -> None:
+    def update_parameters(self, trans : Transition) -> None:
         """Use equation 5 to find loss"""
 
         with torch.no_grad():
@@ -116,17 +108,27 @@ class ValueFunction(BaseNN):
             #For a regularization term which was included Haarnoja github implementation
             data_s = actions.shape[-1]
             num_batches = actions.shape[0]
+            '''
             policy_prior = MultivariateNormal(
                 loc=torch.zeros(data_s).unsqueeze(0).repeat(num_batches, 1),
                 covariance_matrix=torch.eye(data_s).unsqueeze(0).repeat(num_batches, 1, 1))
             policy_prior_log_probs = policy_prior.log_prob(actions)
+            '''
 
-            actual_v_value = self._q_func(input_tensor) - log_prob + policy_prior_log_probs
+            target_v_value : Tensor = self._q_func(input_tensor) - alpha * log_prob #+ policy_prior_log_probs
+        value : Tensor = self(trans.state)
 
-        error : Tensor = (self(trans.state) - actual_v_value) ** 2
-        self.loss = 1/2 * error.mean()
+        error : Tensor = torch.sqrt(1 + (value - target_v_value) ** 2) -1
 
-        writer.add_scalar('Value loss', self.loss, self._num_updates)
+        loss = error.mean()
+
+        self.optim.zero_grad()
+        loss.backward()
+        self.optim.step()
+
+        writer.add_scalar('Targt Value', target_v_value.mean(), self._num_updates)
+        writer.add_scalar('Actual Value', value.mean(), self._num_updates)
+        writer.add_scalar('Value loss', loss, self._num_updates)
         self._num_updates += 1
 
 
@@ -143,11 +145,7 @@ class TargetValueFunction:
         self._v_tar = deepcopy(v_func)
         self._v_func = v_func
 
-    def find_loss(self, trans : Transition) -> None:
-        """No loss to find for Target update"""
-        pass
-
-    def update_parameters(self) -> None:
+    def update_parameters(self, trans : Transition) -> None:
         """Update parameters according to algorithim 1"""
         with torch.no_grad():
             for t_param, v_param in zip(self._v_tar.parameters(), self._v_func.parameters()):
@@ -168,23 +166,32 @@ class QModel(BaseNN):
     def __init__(self, *args, target_v_func : TargetValueFunction) -> None:
         super().__init__(*args)
         self._v_func = target_v_func
-        self.optim = optim.Adam(self.parameters(), STEP_Q)
+        self.optim = optim.Adam(self.parameters(), lr=STEP_Q)
 
         self._network_id = QModel._next_id
         QModel._next_id += 1
         self._num_updates = 1
 
-    def find_loss(self, trans : Transition) -> None:
+    def update_parameters(self, trans : Transition) -> None:
         """Find loss according to equations 7 and 8"""
 
         with torch.no_grad():
             input_tensor = torch.cat((trans.state, trans.action), dim = 1)
-            q_backup = trans.reward + GAMMA  * (1- trans.done) * self._v_func(trans.next_state)
+            q_backup : Tensor = trans.reward + GAMMA  * (1- trans.done) * self._v_func(trans.next_state)
         
-        error : Tensor = (self(input_tensor) - q_backup) ** 2
-        self.loss = 1/2 * error.mean()
+        actual_q : Tensor = self(input_tensor)
 
-        writer.add_scalar(f'Q function {self._network_id} loss', self.loss, self._num_updates)
+        error : Tensor = torch.sqrt(1 + (actual_q - q_backup)) - 1
+
+        loss = error.mean()
+
+        self.optim.zero_grad()
+        loss.backward()
+        self.optim.step()
+
+        writer.add_scalar(f'Q function {self._network_id} backup q', q_backup.mean(), self._num_updates)
+        writer.add_scalar(f'Q function {self._network_id} actual q', actual_q.mean(), self._num_updates)
+        writer.add_scalar(f'Q function {self._network_id} loss', loss, self._num_updates)
         self._num_updates += 1
 
     def extra_info(self) -> str:
@@ -204,15 +211,10 @@ class QFunction:
         """x should be the action concatenated to the state"""
         return torch.min(self._q1(x), self._q2(x))
 
-    def find_loss(self, trans : Transition) -> None:
-        """Will find loss of both q models of the q functions"""
-        for q in self._list_q_funcs():
-            q.find_loss(trans)
-
-    def update_parameters(self) -> None:
+    def update_parameters(self, trans : Transition) -> None:
         """Will update the parameters of the q models"""
         for q in self._list_q_funcs():
-            q.update_parameters()
+            q.update_parameters(trans)
 
     def to(self, device) -> None:
         """Will move both of the q models to the device"""
@@ -245,7 +247,7 @@ class Actor(BaseNN):
             yield from self._mean_lin.parameters()
             yield from self._covar_lin.parameters()
 
-        self.optim = optim.Adam(all_params(), STEP_ACTOR, weight_decay=ACTOR_WEIGHT_DECAY) #weight decay is for l2 regularization which I think the github code uses I am not 100% though
+        self.optim = optim.Adam(all_params(), lr=STEP_ACTOR) #, weight_decay=ACTOR_WEIGHT_DECAY) #weight decay is for l2 regularization which I think the github code uses I am not 100% though
 
         self._num_updates = 0
 
@@ -257,7 +259,7 @@ class Actor(BaseNN):
 
         return self._squash_output(action, dist)
 
-    def find_loss(self, trans : Transition) -> None:
+    def update_parameters(self, trans : Transition) -> None:
         """Finds the loss using equation 12"""
 
         dist = self._dist(trans.state)
@@ -268,36 +270,37 @@ class Actor(BaseNN):
             input_tensor = torch.cat((trans.state, actions), dim=1)
             q_value = self._q_function(input_tensor)
                                    
-        error : Tensor = log_probs - q_value
-        self.loss = error.mean()
+        error : Tensor = alpha * log_probs - q_value
+        loss = error.mean()
 
-        writer.add_scalar('Actor loss', self.loss, self._num_updates)
+        self.optim.zero_grad()
+        loss.backward()
+        self.optim.step()
+
+        writer.add_scalar('Log_prob', log_probs.mean(), self._num_updates)
+        writer.add_scalar('Actor loss', loss, self._num_updates)
         self._num_updates += 1
 
-    def _squash_output(self, action : Tensor, dist : MultivariateNormal) -> tuple[Tensor, Tensor]:
+    def _squash_output(self, action : Tensor, dist : Normal) -> tuple[Tensor, Tensor]:
         """Will squash the action and the log_prob with tanh using equation 20
         Can be used on batches or on single values"""
 
         tan_action = torch.tanh(action)
-        log_probs : Tensor = (dist.log_prob(action) - torch.sum(torch.log(1 - torch.tanh(action) ** 2 + EPS), dim = -1)).unsqueeze(-1)
+
+        log_probs = dist.log_prob(action).sum(dim=-1)
+        log_probs -= (2*(math.log(2) - action - F.softplus(2 * action))).sum(dim=-1)
 
         return tan_action, log_probs
 
-    def _dist(self, x : Tensor) -> MultivariateNormal:
+    def _dist(self, x : Tensor) -> Normal:
         """Will create a distribution for either a single or batch of a state """
 
         mean = self._mean_lin(self.layers(x))
-        covar = self._covar_lin(self.layers(x))
-        covar = torch.clamp(covar, EPS, 1)
-    
-        if len(covar.shape) == 2: #When dealing with batches
-            covar_m = torch.diag(covar[0]).unsqueeze(dim = 0)
-            for cv in covar[1:]:
-                covar_m = torch.cat((covar_m, torch.diag(cv).unsqueeze(dim = 0)), dim = 0)
-        else:
-            covar_m = torch.diag(covar)
+        std = self._covar_lin(self.layers(x))
+        std = torch.clamp(std, LOG_STD_MIN, LOG_STD_MAX)
+        std = torch.exp(std)
 
-        return MultivariateNormal(mean, covar_m)
+        return Normal(mean, std)
 
 
 class MemoryBuffer:
@@ -349,12 +352,22 @@ def unscale_action(action_space, scaled_action):
     low, high = action_space.low, action_space.high
     return low + (0.5 * (scaled_action + 1.0) * (high - low))
 
-def train(gm : gym.Env, len_state : int , len_output : int, * , reward_scale : float, max_game : int=None, max_steps : int=None, extra_save_info : str=None, log_dir :str=None) -> None:
+def train(gm : gym.Env,
+          len_state : int,
+          len_output : int,
+          *,
+          reward_scale : float,
+          max_game : int=None,
+          max_steps : int=None,
+          extra_save_info : str=None,
+          log_dir :str=None) -> None:
     """Will train an agent with a continuous state space of dimensionality len_input and
     a continuous action space of dimensionality of len_output. It will train indefinitely until there
     is an exception (KeyboardInterrupt) or when the agent has been trained for a defined amount of max_game"""
 
     global writer #Should be fixed later
+    global alpha
+    alpha = 1 / reward_scale
     if log_dir is not None:
         new_log_dir = f'runs/{log_dir}/run{extra_save_info}'
     else:
@@ -391,7 +404,6 @@ def train(gm : gym.Env, len_state : int , len_output : int, * , reward_scale : f
             next_state, reward, terminated, truncated, _ = gm.step(unscaled_action)
             done = terminated or truncated
             total_return += reward
-            reward *= reward_scale
             next_state = tensor(next_state, device=_DEVICE, dtype=torch.float32)
             next_action, _ = actor(next_state)
 
@@ -401,18 +413,16 @@ def train(gm : gym.Env, len_state : int , len_output : int, * , reward_scale : f
                 tensor(next_state, device=_DEVICE, dtype=torch.float32),
                 next_action,
                 tensor([reward], device=_DEVICE, dtype=torch.float32),
-                tensor([done], device=_DEVICE, dtype=torch.float32)
+                tensor([terminated], device=_DEVICE, dtype=torch.float32)
             )
 
             replay_buffer.add_data(trans)
             
             batch = replay_buffer.sample()
 
-            for net in list_networks:
-                net.find_loss(batch)
-
-            for net in list_networks:
-                net.update_parameters()
+            if len(batch) == SAMPLE_SIZE or num_games >= NUM_RUNS:
+                for net in list_networks:
+                    net.update_parameters(batch)
 
             episodes += 1
 

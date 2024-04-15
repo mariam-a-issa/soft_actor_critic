@@ -3,7 +3,7 @@ from pathlib import Path
 import gym
 import torch
 
-from nn_sac import Actor
+from continuous.nn_sac import Actor
 
 def evaluate(env : gym.Env, input_size : int, output_size : int, *, path : str, max_games : int = None):
     """Will evaluate the model with the given input and output_size at the given path"""
