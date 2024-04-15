@@ -11,6 +11,8 @@ from data_collection import Transition
 
 #Parameter update implementation from https://arxiv.org/abs/1910.07207
 
+_EPS = 1e-4 #Term used in cleanrl
+
 class QFunction:
 
     def __init__(self, 
@@ -27,8 +29,8 @@ class QFunction:
         self._q1 = BaseNN(input_size, output_size, hidden_size, id=1)
         self._q2 = BaseNN(input_size, output_size, hidden_size, id=2)
         
-        self._optim1 = optim.Adam(self._q1.parameters(), lr=lr)
-        self._optim2 = optim.Adam(self._q2.parameters(), lr=lr)
+        self._optim1 = optim.Adam(self._q1.parameters(), lr=lr, eps=_EPS)
+        self._optim2 = optim.Adam(self._q2.parameters(), lr=lr, eps=_EPS)
 
         self._actor = actor
         self._target = target
@@ -56,7 +58,7 @@ class QFunction:
 
             #Unsqueeze in order to have b x 1 x a · b x a x 1
             #Which results in b x 1 x 1 to then be squeezed to b x 1 
-            
+
             next_v = torch.bmm(next_action_probs.unsqueeze(dim=1), q_log_dif.unsqueeze(dim=-1)).squeeze()
 
             next_q = trans.reward + (1 - trans.done) * self._discount * next_v
@@ -139,7 +141,7 @@ class Alpha:
         
         self._target_ent = -scale * torch.log(1 / torch.tensor(action_space_size))
         self._log_alpha = torch.zeros(1, requires_grad=True)
-        self._optim = optim.Adam([self._log_alpha], lr = lr)
+        self._optim = optim.Adam([self._log_alpha], lr = lr, eps=_EPS)
 
     def to(self, device) -> None:
         """Will move the alpha to the device"""
@@ -174,7 +176,7 @@ class Actor(BaseNN):
         
         self._target = target
         self._alpha = alpha
-        self._optim = optim.Adam(self.parameters(), lr=lr)
+        self._optim = optim.Adam(self.parameters(), lr=lr, eps=_EPS)
 
     def forward(self, x : Tensor) -> tuple[Tensor]:
         """Will give the action, log_prob, and action_probs of action"""
