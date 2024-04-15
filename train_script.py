@@ -6,9 +6,6 @@ from torch import Tensor
 
 import gym
 
-import os
-print(os.getcwd())
-
 from discrete import NNAgent
 from data_collection import MemoryBuffer, Transition
 

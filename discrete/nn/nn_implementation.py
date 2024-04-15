@@ -56,6 +56,7 @@ class QFunction:
 
             #Unsqueeze in order to have b x 1 x a · b x a x 1
             #Which results in b x 1 x 1 to then be squeezed to b x 1 
+            
             next_v = torch.bmm(next_action_probs.unsqueeze(dim=1), q_log_dif.unsqueeze(dim=-1)).squeeze()
 
             next_q = trans.reward + (1 - trans.done) * self._discount * next_v
@@ -88,6 +89,7 @@ class QFunction:
                           expected : Tensor, 
                           steps : int,
                           summary_writer : SummaryWriter) -> Tensor:
+        
         """Will calculate the loss for both q according to equation 4 then backprop"""
         ls1 = 1/2 * ((actual1 - expected) ** 2).mean()
         ls2 = 1/2 * ((actual2 - expected) ** 2).mean()
@@ -193,8 +195,11 @@ class Actor(BaseNN):
 
         with torch.no_grad():
             q_v = self._target(trans.state)
+        
+        difference = self._alpha() * log_probs - q_v
 
-        loss : Tensor = (action_probs * (self._alpha() * log_probs - q_v)).mean()
+        #Using same trick as line 58
+        loss : Tensor = torch.bmm(action_probs.unsqueeze(dim=1), difference.unsqueeze(dim=-1)).mean() #Don't need squeeze as the result is b x 1 x 1 and mean will handle correctly
 
         self._optim.zero_grad()
         loss.backward()
