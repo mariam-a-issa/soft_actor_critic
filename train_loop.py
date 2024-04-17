@@ -37,6 +37,9 @@ _DEVICE = torch.device(device)
 
 torch.set_default_device(_DEVICE)
 
+torch.manual_seed(0) #For making sure that it is more reproducable
+torch.use_deterministic_algorithms(True, warn_only=True)
+
 def train(
         extra_info : str = '', *,
         log_dir : str = LOG_DIR,
