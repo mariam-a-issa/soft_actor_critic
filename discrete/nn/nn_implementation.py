@@ -59,7 +59,7 @@ class QFunction:
             #Unsqueeze in order to have b x 1 x a · b x a x 1
             #Which results in b x 1 x 1 to then be squeezed to b x 1 
 
-            next_v = torch.bmm(next_action_probs.unsqueeze(dim=1), q_log_dif.unsqueeze(dim=-1)).squeeze()
+            next_v = torch.bmm(next_action_probs.unsqueeze(dim=1), q_log_dif.unsqueeze(dim=-1)).squeeze(dim=-1) #Squeeze dim=-1 so that we have a b x 1 instead of b
 
             next_q = trans.reward + (1 - trans.done) * self._discount * next_v
 
