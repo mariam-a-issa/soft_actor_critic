@@ -173,6 +173,7 @@ class Actor(BaseNN):
                  target : QFunctionTarget, 
                  alpha : 'Alpha',
                  lr : float) -> None:
+        
         super().__init__(input_size, output_size, hidden_size)
         self._target = target
         self._alpha = alpha

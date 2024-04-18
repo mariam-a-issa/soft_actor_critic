@@ -1,6 +1,12 @@
+from copy import deepcopy
+from pathlib import Path
+import os
+
 from torch import nn, Tensor, device, optim
 import torch
 from torch.utils.tensorboard import SummaryWriter
+from torch.distributions import Categorical
+import torch.nn.functional as F 
 
 from encoders import RBFEncoder, EXPEncoder
 from data_collection import Transition
@@ -19,11 +25,6 @@ class Alpha:
         self._log_alpha = torch.zeros(1, requires_grad=True)
         self._optim = optim.Adam([self._log_alpha], lr = lr, eps=_EPS)
 
-    def to(self, device) -> None:
-        """Will move the alpha to the device"""
-        self._target_ent.to(device)
-        self._log_alpha.to(device)
-
     def __call__(self) -> float:
         """Will give the current alpha"""
         return self._log_alpha.exp().item()
@@ -38,9 +39,13 @@ class Alpha:
 
         summary_writer.add_scalar('Alpha Loss', loss, steps)
 
+    def to(self, dev : device) -> None:
+        self._target_ent.to(dev)
+        self._log_alpha.to(dev)
+
 class QModel:
 
-    def __init__(self, hvec_dim : int, action_dim : int, dev : device) -> None:
+    def __init__(self, hvec_dim : int, action_dim : int) -> None:
         """Will create a model that is a matrix that contains a hypervector for each action"""
         upper_bound = 1 / torch.sqrt(hvec_dim)
         lower_bound = -upper_bound
@@ -48,7 +53,7 @@ class QModel:
         #Using the same initilzation as the torch.nn.Linear 
         #https://github.com/pytorch/pytorch/blob/main/torch/nn/modules/linear.py#L106-L108
 
-        self.model = (upper_bound - lower_bound) * torch.rand(action_dim, hvec_dim, device = dev) + lower_bound
+        self._model = (upper_bound - lower_bound) * torch.rand(action_dim, hvec_dim) + lower_bound
         self._hdvec_dim = hvec_dim
 
     def __call__(self, state : Tensor) -> Tensor:
@@ -59,15 +64,21 @@ class QModel:
 
         """
 
-        return torch.real(torch.matmul(torch.conj(self.model), state.unsqueeze(dim = 2)).squeeze() / self._hdvec_dim)
+        return torch.real(torch.matmul(torch.conj(self._model), state.unsqueeze(dim = 2)).squeeze() / self._hdvec_dim)
+    
+    def parameters(self) -> Tensor:
+        return self._model
+    
+    def to(self, dev : device) -> None:
+        self._model.to(dev)
     
 
 class QFunction:
 
     def __init__(self, hvec_dim : int, 
-                 action_dim : int, 
-                 dev : device, 
-                 encoder : RBFEncoder, 
+                 action_dim : int,
+                 actor_encoder : EXPEncoder, 
+                 critic_encoder : RBFEncoder, 
                  actor : 'Actor',
                  target : 'TargetQFunction',
                  alpha : Alpha,
@@ -75,10 +86,11 @@ class QFunction:
                  discount : float) -> None:
         """Will create a Q function that has two q models"""
 
-        self._q1 = QModel(hvec_dim, action_dim, dev)
-        self._q2 = QModel(hvec_dim, action_dim, dev)
+        self._q1 = QModel(hvec_dim, action_dim)
+        self._q2 = QModel(hvec_dim, action_dim)
 
-        self.encoder = encoder
+        self._actor_encoder = actor_encoder
+        self._critic_encoder = critic_encoder
 
         self._actor = actor
         self._target = target
@@ -90,7 +102,7 @@ class QFunction:
         """State should be an encoded h_vect"""
         return torch.min(self._q1(state), self._q2(state))
     
-    def update(self, trans : Transition) -> None:
+    def update(self, trans : Transition, steps : int, summary_writer : SummaryWriter) -> None:
         """Use equation 10 to find loss and then bind loss"""
 
         #Start of copied code from nn_implementation
@@ -101,7 +113,7 @@ class QFunction:
             #Unsqueeze in order to have b x 1 x a · b x a x 1
             #Which results in b x 1 x 1 to then be squeezed to b x 1 
 
-            next_v = torch.bmm(next_action_probs.unsqueeze(dim=1), q_log_dif.unsqueeze(dim=-1)).squeeze()
+            next_v = torch.bmm(next_action_probs.unsqueeze(dim=1), q_log_dif.unsqueeze(dim=-1)).squeeze(dim=-1)
 
             next_q = trans.reward + (1 - trans.done) * self._discount * next_v
 
@@ -121,24 +133,113 @@ class QFunction:
         #Need to make it so that the mean of the losses for a given action update the specific hypervector that the action is attached to
         #Potentially have a matrix that has a one at the index of the action, use that to get a vector of the sum of losses for each action 
         #Then have another vector representing the amount of times the action is taken and then do component wise division
+    
+    def to(self, device : device) -> None:
+        """Moves q function to device"""
+        self._q1.to(device)
+        self._q2.to(device)
 
+class TargetQFunction:
+    
+    def __init__(self,
+                 tau : int,
+                 q_function : QFunction) -> None:
 
+        self._actual = q_function
 
+        self._q1 = deepcopy(q_function._q1)
+        self._q2 = deepcopy(q_function._q2)
 
+        self._tau = tau
+
+    def set_actual(self, q_function : QFunction) -> None:
+        """Will actually set the q_function if it was not set in init"""
+        self._actual = q_function
+    
+    def __call__(self, state) -> Tensor:
+        return torch.min(self._q1(state), self._q2(state))
+
+    def update(self) -> None:
+        """Will do polyak averaging to each model in the target"""
+        for param, target_param in zip(self._actual._q1.parameters(), self._q1.parameters()):
+            target_param.data.copy_(self._tau * param.data + (1 - self._tau) * target_param.data)
+        for param, target_param in zip(self._actual._q2.parameters(), self._q2.parameters()):
+            target_param.data.copy_(self._tau * param.data + (1 - self._tau) * target_param.data)
+    
+    def to(self, dev : device) -> None:
+        self._q1.to(dev)
+        self._q2.to(dev)
+
+class Actor(nn.Module):
+
+    def __init__(self, 
+                 hvec_dim : int, 
+                 action_dim : int, 
+                 lr : int, 
+                 actor_encoder : EXPEncoder,
+                 critic_encoder : RBFEncoder,
+                 alpha : Alpha, 
+                 target_q : TargetQFunction) -> None:
+        super().__init__()
+
+        self._a_encoder = actor_encoder
+        self._c_encoder = critic_encoder
         
-
-class TargetQFunction(QFunction):
-
-    def update(self, trans : Transition) -> None:
-        pass
-
-class Actor:
-
-    def __init__(self, hvec_dim : int, action_dim : int, dev : device, encoder : EXPEncoder, target_q : TargetQFunction) -> None:
+        self._logits = nn.Linear(hvec_dim, action_dim, bias=False)
         
-        self.encoder = encoder
+        self._target = target_q
+        self._alpha = alpha
 
+        self._optim = optim.Adam(self.parameters(), lr=lr)
 
+    def forward(self, state : Tensor) -> tuple[Tensor]:
+        """Will give the action, log_prob, action_probs of action"""
+
+        #Basically the same as the nn_implementation
+        logits = self._logits(state)
+        dist = Categorical(logits=logits)
+        action = dist.sample()
+        action_probs = dist.probs
+        log_prob = F.log_softmax(logits, dim=-1)
+
+        return action, log_prob, action_probs
+    
+    def update(self, trans : Transition, steps : int, summary_writer : SummaryWriter):
+        """Using according to equation 12 as well as gradient based """
+        
+        #Same as the nn_implementation as it is doing gradient
+        
+        with torch.no_grad():
+            act_state_hypervec = self._a_encoder(trans.state) #The actor encoder gradient should not be calculated for adjusting just the actor
+            crit_state_hypervec = self._c_encoder(trans.state)
+            q_v = self._target(crit_state_hypervec)
+
+        _, log_probs, action_probs = self(act_state_hypervec)
+        
+        difference = self._alpha() * log_probs - q_v
+
+        loss : Tensor = torch.bmm(action_probs.unsqueeze(dim=1), difference.unsqueeze(dim=-1)).mean() #Don't need squeeze as the result is b x 1 x 1 and mean will handle correctly
+
+        self._optim.zero_grad()
+        loss.backward()
+        self._optim.step()
+
+        self._alpha.update(log_probs, action_probs, steps, summary_writer) #Do the update in the actor in order to not recaluate probs
+
+        summary_writer.add_scalar('Actor Loss', loss, steps)
+
+    def save(self, file_name ='best_weights.pt') -> None:
+        """Will save the model in the folder 'model' in the dir that the script was run in."""
+
+        folder_name = type(self).__name__ + self._extra_info
+
+        model_folder_path = Path('./model/' + folder_name)
+        file_dir = Path(os.path.join(model_folder_path, file_name))
+
+        if not os.path.exists(file_dir.parent):
+            os.makedirs(file_dir.parent)
+
+        torch.save(self.state_dict(), file_dir)
 
 
 
