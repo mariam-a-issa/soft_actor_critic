@@ -1,0 +1,3 @@
+[submodule "gym-idsgame"]
+	path = gym-idsgame
+	url = git@github.com:mariam-a-issa/gym-idsgame.git

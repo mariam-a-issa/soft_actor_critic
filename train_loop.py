@@ -15,6 +15,7 @@ from data_collection import MemoryBuffer, Transition
 HIDDEN_LAYER_SIZE = 256
 POLICY_LR = 3e-4
 CRITIC_LR = 3e-4
+ALPHA_LR = 3e-4
 DISCOUNT = .99
 TAU = .005
 ALPHA_SCALE = .89
@@ -45,7 +46,8 @@ def train(
         log_dir : str = LOG_DIR,
         hidden_size : int = HIDDEN_LAYER_SIZE,
         policy_lr : float = POLICY_LR,
-        critic_lr : float= CRITIC_LR,
+        critic_lr : float = CRITIC_LR,
+        alpha_lr : float = ALPHA_LR,
         discount : float = DISCOUNT,
         tau : float = TAU,
         alpha_scale :float = ALPHA_SCALE,
@@ -69,6 +71,7 @@ def train(
         hidden_size,
         policy_lr,
         critic_lr,
+        alpha_lr,
         discount,
         tau,
         alpha_scale,
