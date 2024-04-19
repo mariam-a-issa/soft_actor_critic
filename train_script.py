@@ -16,7 +16,7 @@ def train_script():
     alpha_lr = [.01, .005, .001, .0005, .0001, .00005, .00001]
 
     for value in alpha_lr:
-        train(f"alpha_lr'{value}'", alpha_lr=value, log_dir='runs/alpha_lr_experiemnt')
+        train(f"alpha_lr'{value}'", alpha_lr=value, log_dir='runs/alpha_lr_experiment')
 
     tau = [.1, .05, .01, .005, .001, .0005, .0001]
       
