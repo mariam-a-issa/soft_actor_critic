@@ -13,6 +13,11 @@ def train_script():
     for value in critic_lr:
         train(f"critic_lr'{value}'", critic_lr=value, log_dir='runs/critic_lr_experiment')
 
+    alpha_lr = [.01, .005, .001, .0005, .0001, .00005, .00001]
+
+    for value in alpha_lr:
+        train(f"alpha_lr'{value}'", alpha_lr=value, log_dir='runs/alpha_lr_experiemnt')
+
     tau = [.1, .05, .01, .005, .001, .0005, .0001]
       
     for value in tau:
