@@ -12,6 +12,7 @@ class Agent:
                  hidden_size : int,
                  policy_lr : float,
                  critic_lr : float,
+                 alpha_lr : float,
                  discount : float,
                  tau : float,
                  alpha_scale : float,
@@ -21,7 +22,7 @@ class Agent:
                  ) -> None:
         
         self._target_q = QFunctionTarget(None, tau)
-        self._alpha = Alpha(output_size, alpha_scale, critic_lr)
+        self._alpha = Alpha(output_size, alpha_scale, alpha_lr)
 
         self._actor = Actor(input_size, 
                             output_size, 
