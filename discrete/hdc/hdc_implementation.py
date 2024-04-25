@@ -1,6 +1,7 @@
 from copy import deepcopy
 from pathlib import Path
 import os
+import math
 
 from torch import nn, Tensor, device, optim
 import torch
@@ -47,14 +48,16 @@ class QModel:
 
     def __init__(self, hvec_dim : int, action_dim : int) -> None:
         """Will create a model that is a matrix that contains a hypervector for each action"""
-        upper_bound = 1 / torch.sqrt(hvec_dim)
+        upper_bound = 1 / math.sqrt(hvec_dim)
         lower_bound = -upper_bound
         
         #Using the same initilzation as the torch.nn.Linear 
         #https://github.com/pytorch/pytorch/blob/main/torch/nn/modules/linear.py#L106-L108
 
-        self._model = (upper_bound - lower_bound) * torch.rand(action_dim, hvec_dim) + lower_bound
+        self._model = (upper_bound - lower_bound) * torch.rand(action_dim, hvec_dim, dtype=torch.cfloat) + lower_bound
+        self._model.requires_grad_(False)
         self._hdvec_dim = hvec_dim
+        self._action_dim = action_dim
 
     def __call__(self, state : Tensor) -> Tensor:
         """Parameter is a batch of encoded states and will 
@@ -63,8 +66,9 @@ class QModel:
         b x hd -> b x a
 
         """
-
-        return torch.real(torch.matmul(torch.conj(self._model), state.unsqueeze(dim = 2)).squeeze() / self._hdvec_dim)
+        
+        # Need to broadcast model to batched state so state needs to be unsqueezed
+        return torch.real((torch.conj(self._model) @ state.unsqueeze(dim = 2)).squeeze() / self._hdvec_dim).view(state.shape[0], self._action_dim)
     
     def parameters(self) -> Tensor:
         return self._model
@@ -89,8 +93,8 @@ class QFunction:
         self._q1 = QModel(hvec_dim, action_dim)
         self._q2 = QModel(hvec_dim, action_dim)
 
-        self._actor_encoder = actor_encoder
-        self._critic_encoder = critic_encoder
+        self._a_encoder = actor_encoder
+        self._c_encoder = critic_encoder
 
         self._actor = actor
         self._target = target
@@ -104,11 +108,14 @@ class QFunction:
     
     def update(self, trans : Transition, steps : int, summary_writer : SummaryWriter) -> None:
         """Use equation 10 to find loss and then bind loss"""
+        ae_next_state = self._a_encoder(trans.next_state)
+        ce_next_state = self._c_encoder(trans.next_state)
+        ce_state = self._c_encoder(trans.state)
 
         #Start of copied code from nn_implementation
         with torch.no_grad():
-            _, next_log_pi, next_action_probs = self._actor(trans.next_state)
-            q_log_dif : Tensor = self._target(trans.next_state) - self._alpha() * next_log_pi
+            _, next_log_pi, next_action_probs = self._actor(ae_next_state)
+            q_log_dif : Tensor = self._target(ce_next_state) - self._alpha() * next_log_pi
 
             #Unsqueeze in order to have b x 1 x a · b x a x 1
             #Which results in b x 1 x 1 to then be squeezed to b x 1 
@@ -117,8 +124,8 @@ class QFunction:
 
             next_q = trans.reward + (1 - trans.done) * self._discount * next_v
 
-        q1 : Tensor = self._q1(trans.state)
-        q2 : Tensor = self._q2(trans.state)
+        q1 : Tensor = self._q1(ce_state)
+        q2 : Tensor = self._q2(ce_state)
 
         #The action will be b x 1 where each element corresponds to index of action
         #By doing gather, make q_a with shape b x 1 where the element is the q value for the performed action
@@ -127,13 +134,23 @@ class QFunction:
         q2_a = q2.gather(1, trans.action)
         #Stop of copy
 
-        #Issue
-        #Currently can have a vector representing the loss for each element of the batch and 
-        #can have vector where each element represents the index of thea action taken
-        #Need to make it so that the mean of the losses for a given action update the specific hypervector that the action is attached to
-        #Potentially have a matrix that has a one at the index of the action, use that to get a vector of the sum of losses for each action 
-        #Then have another vector representing the amount of times the action is taken and then do component wise division
-    
+        l1 : Tensor = next_q - q1_a
+        l2 : Tensor = next_q - q2_a
+
+        summary_writer.add_scalar("QFunc1 Loss", l1.mean(), steps)
+        summary_writer.add_scalar("QFunc2 Loss", l2.mean(), steps)
+
+        #Creates a matrix where each row is the hypervector that should be bundled with the model
+        matrix_l1 = l1 * ce_state * self._lr
+        matrix_l2 = l2 * ce_state * self._lr
+
+        #Index add will add the vector found at index i of matrix_l1 to index a_i of the model (returned by parameters()),
+        #where a_i is the value of trans.action at index i
+        #trans.action is a b x 1 column vector but needs to be row vector so squeeze
+        self._q1.parameters().index_add_(0, trans.action.squeeze(), matrix_l1)
+        self._q2.parameters().index_add_(0, trans.action.squeeze(), matrix_l2)
+
+
     def to(self, device : device) -> None:
         """Moves q function to device"""
         self._q1.to(device)
@@ -147,14 +164,18 @@ class TargetQFunction:
 
         self._actual = q_function
 
-        self._q1 = deepcopy(q_function._q1)
-        self._q2 = deepcopy(q_function._q2)
+        if q_function is not None:
+            self._q1 = deepcopy(q_function._q1)
+            self._q2 = deepcopy(q_function._q2)
 
         self._tau = tau
 
     def set_actual(self, q_function : QFunction) -> None:
         """Will actually set the q_function if it was not set in init"""
         self._actual = q_function
+
+        self._q1 = deepcopy(q_function._q1)
+        self._q2 = deepcopy(q_function._q2)
     
     def __call__(self, state) -> Tensor:
         return torch.min(self._q1(state), self._q2(state))
@@ -186,6 +207,7 @@ class Actor(nn.Module):
         self._c_encoder = critic_encoder
         
         self._logits = nn.Linear(hvec_dim, action_dim, bias=False)
+        self._logits.weight.data = torch.zeros((action_dim, hvec_dim))
         
         self._target = target_q
         self._alpha = alpha
@@ -195,7 +217,7 @@ class Actor(nn.Module):
     def forward(self, state : Tensor) -> tuple[Tensor]:
         """Will give the action, log_prob, action_probs of action"""
 
-        #Basically the same as the nn_implementation
+        #Same as the nn_implementation
         logits = self._logits(state)
         dist = Categorical(logits=logits)
         action = dist.sample()
@@ -209,12 +231,11 @@ class Actor(nn.Module):
         
         #Same as the nn_implementation as it is doing gradient
         
-        with torch.no_grad():
-            act_state_hypervec = self._a_encoder(trans.state) #The actor encoder gradient should not be calculated for adjusting just the actor
-            crit_state_hypervec = self._c_encoder(trans.state)
-            q_v = self._target(crit_state_hypervec)
+        ae_state = self._a_encoder(trans.state)
+        ce_state = self._c_encoder(trans.state)
+        q_v = self._target(ce_state)
 
-        _, log_probs, action_probs = self(act_state_hypervec)
+        _, log_probs, action_probs = self(ae_state)
         
         difference = self._alpha() * log_probs - q_v
 
@@ -231,7 +252,7 @@ class Actor(nn.Module):
     def save(self, file_name ='best_weights.pt') -> None:
         """Will save the model in the folder 'model' in the dir that the script was run in."""
 
-        folder_name = type(self).__name__ + self._extra_info
+        folder_name = type(self).__name__
 
         model_folder_path = Path('./model/' + folder_name)
         file_dir = Path(os.path.join(model_folder_path, file_name))

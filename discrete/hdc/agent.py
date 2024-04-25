@@ -22,8 +22,8 @@ class Agent:
                  summary_writer : SummaryWriter
                  ) -> None:
         
-        self._actor_encoder = EXPEncoder(input_size, hyper_dim)
-        self._critic_encoder = RBFEncoder(input_size, hyper_dim)
+        self._actor_encoder = RBFEncoder(input_size, hyper_dim)
+        self._critic_encoder = EXPEncoder(input_size, hyper_dim)
 
         self._target_q = TargetQFunction(tau, None)
         self._alpha = Alpha(output_size, alpha_scale, critic_lr)
