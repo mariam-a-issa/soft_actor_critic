@@ -1,4 +1,5 @@
 from torch import Tensor
+import torch
 from torch.utils.tensorboard import SummaryWriter
 
 from .nn_implementation import QFunctionTarget, QFunction, Actor, Alpha
@@ -49,8 +50,9 @@ class Agent:
 
     def __call__(self, state : Tensor) -> Tensor:
         """Will return the action that should be executed at the given state"""
-        action, _, _ = self._actor(state)
-        return action
+        with torch.no_grad():
+            action, _, _ = self._actor(state)
+            return action
 
     def update(self, batch : Transition, steps : int) -> None:
         """Will update the networks according to the correct steps"""

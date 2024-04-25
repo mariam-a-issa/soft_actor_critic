@@ -6,13 +6,14 @@ from torch import Tensor
 
 import gym
 
-from discrete import NNAgent
+from discrete import NNAgent, HDCAgent
 from data_collection import MemoryBuffer, Transition
 
 #Hyperparameters
 #TODO Make these pass my command line
 
 HIDDEN_LAYER_SIZE = 256
+HYPER_VEC_DIM = 2048
 POLICY_LR = 3e-4
 CRITIC_LR = 3e-4
 ALPHA_LR = 3e-4
@@ -53,7 +54,9 @@ def train(
         explore_steps : int = EXPLORE_STEPS ,
         buffer_size : int = BUFFER_SIZE,
         sample_size : int = SAMPLE_SIZE,
-        max_steps : int = MAX_STEPS) -> None:
+        max_steps : int = MAX_STEPS,
+        hdc_agent : bool = False,
+        hypervec_dim : int = HYPER_VEC_DIM) -> None:
     """Will be the main training loop"""
 
     buffer = MemoryBuffer(buffer_size, sample_size)
@@ -62,20 +65,35 @@ def train(
 
     env = gym.make('CartPole-v1')
 
-    agent = NNAgent(
-        4,
-        2,
-        hidden_size,
-        policy_lr,
-        critic_lr,
-        alpha_lr,
-        discount,
-        tau,
-        alpha_scale,
-        target_update,
-        update_frequency,
-        writer
-    )
+    if hdc_agent:
+        agent = HDCAgent(
+            4,
+            2,
+            hypervec_dim,
+            policy_lr,
+            critic_lr,
+            discount,
+            tau,
+            alpha_scale,
+            target_update,
+            update_frequency,
+            writer
+        )
+    else:
+        agent = NNAgent(
+            4,
+            2,
+            hidden_size,
+            policy_lr,
+            critic_lr,
+            alpha_lr,
+            discount,
+            tau,
+            alpha_scale,
+            target_update,
+            update_frequency,
+            writer
+        )
 
     agent.to(_DEVICE)
 
@@ -131,4 +149,4 @@ def train(
 
 if __name__ == '__main__':
     for i in range(3):
-        train(i)
+        train(i, hdc_agent=True)
