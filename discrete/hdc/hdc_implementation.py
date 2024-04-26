@@ -68,7 +68,8 @@ class QModel:
         """
         
         # Need to broadcast model to batched state so state needs to be unsqueezed
-        return torch.real((torch.conj(self._model) @ state.unsqueeze(dim = 2)).squeeze() / self._hdvec_dim).view(state.shape[0], self._action_dim)
+        with torch.no_grad():
+            return torch.real((torch.conj(self._model) @ state.unsqueeze(dim = 2)).squeeze() / self._hdvec_dim).view(state.shape[0], self._action_dim)
     
     def parameters(self) -> Tensor:
         return self._model
@@ -106,14 +107,16 @@ class QFunction:
         """State should be an encoded h_vect"""
         return torch.min(self._q1(state), self._q2(state))
     
-    def update(self, trans : Transition, steps : int, summary_writer : SummaryWriter) -> None:
-        """Use equation 10 to find loss and then bind loss"""
-        ae_next_state = self._a_encoder(trans.next_state)
-        ce_next_state = self._c_encoder(trans.next_state)
-        ce_state = self._c_encoder(trans.state)
+    def update(self, trans : Transition, steps : int, summary_writer : SummaryWriter) -> Tensor:
+        """Use equation 10 to find loss and then bind loss
+           Return the ce_state loss in order to not recalculate it"""
 
         #Start of copied code from nn_implementation
         with torch.no_grad():
+            ae_next_state = self._a_encoder(trans.next_state)
+            ce_next_state = self._c_encoder(trans.next_state)
+            ce_state = self._c_encoder(trans.state)
+        
             _, next_log_pi, next_action_probs = self._actor(ae_next_state)
             q_log_dif : Tensor = self._target(ce_next_state) - self._alpha() * next_log_pi
 
@@ -124,31 +127,33 @@ class QFunction:
 
             next_q = trans.reward + (1 - trans.done) * self._discount * next_v
 
-        q1 : Tensor = self._q1(ce_state)
-        q2 : Tensor = self._q2(ce_state)
+            q1 : Tensor = self._q1(ce_state)
+            q2 : Tensor = self._q2(ce_state)
 
-        #The action will be b x 1 where each element corresponds to index of action
-        #By doing gather, make q_a with shape b x 1 where the element is the q value for the performed action
+            #The action will be b x 1 where each element corresponds to index of action
+            #By doing gather, make q_a with shape b x 1 where the element is the q value for the performed action
+            
+            q1_a = q1.gather(1, trans.action)
+            q2_a = q2.gather(1, trans.action)
+            #Stop of copy
+
+            l1 : Tensor = next_q - q1_a
+            l2 : Tensor = next_q - q2_a
+
+            summary_writer.add_scalar("QFunc1 Loss", l1.mean(), steps)
+            summary_writer.add_scalar("QFunc2 Loss", l2.mean(), steps)
+
+            #Creates a matrix where each row is the hypervector that should be bundled with the model
+            matrix_l1 = l1 * ce_state * self._lr
+            matrix_l2 = l2 * ce_state * self._lr
+
+            #Index add will add the vector found at index i of matrix_l1 to index a_i of the model (returned by parameters()),
+            #where a_i is the value of trans.action at index i
+            #trans.action is a b x 1 column vector but needs to be row vector so squeeze
+            self._q1.parameters().index_add_(0, trans.action.squeeze(), matrix_l1)
+            self._q2.parameters().index_add_(0, trans.action.squeeze(), matrix_l2)
         
-        q1_a = q1.gather(1, trans.action)
-        q2_a = q2.gather(1, trans.action)
-        #Stop of copy
-
-        l1 : Tensor = next_q - q1_a
-        l2 : Tensor = next_q - q2_a
-
-        summary_writer.add_scalar("QFunc1 Loss", l1.mean(), steps)
-        summary_writer.add_scalar("QFunc2 Loss", l2.mean(), steps)
-
-        #Creates a matrix where each row is the hypervector that should be bundled with the model
-        matrix_l1 = l1 * ce_state * self._lr
-        matrix_l2 = l2 * ce_state * self._lr
-
-        #Index add will add the vector found at index i of matrix_l1 to index a_i of the model (returned by parameters()),
-        #where a_i is the value of trans.action at index i
-        #trans.action is a b x 1 column vector but needs to be row vector so squeeze
-        self._q1.parameters().index_add_(0, trans.action.squeeze(), matrix_l1)
-        self._q2.parameters().index_add_(0, trans.action.squeeze(), matrix_l2)
+        return ce_state 
 
 
     def to(self, device : device) -> None:
@@ -226,13 +231,12 @@ class Actor(nn.Module):
 
         return action, log_prob, action_probs
     
-    def update(self, trans : Transition, steps : int, summary_writer : SummaryWriter):
+    def update(self, trans : Transition, steps : int, summary_writer : SummaryWriter, ce_state : Tensor):
         """Using according to equation 12 as well as gradient based """
         
         #Same as the nn_implementation as it is doing gradient
         
         ae_state = self._a_encoder(trans.state)
-        ce_state = self._c_encoder(trans.state)
         q_v = self._target(ce_state)
 
         _, log_probs, action_probs = self(ae_state)
