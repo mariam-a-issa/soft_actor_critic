@@ -63,8 +63,8 @@ class Agent:
     def update(self, batch : Transition, steps : int) -> None:
         """Will update the networks according to the correct steps"""
         if steps % self._update_freq == 0:
-            self._q_function.update(batch, steps, self._sw)
-            self._actor.update(batch, steps, self._sw)
+            ce_state = self._q_function.update(batch, steps, self._sw)
+            self._actor.update(batch, steps, self._sw, ce_state)
 
         if steps % self._target_update == 0:
             self._target_q.update()
