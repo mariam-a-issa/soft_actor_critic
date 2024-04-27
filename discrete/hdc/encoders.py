@@ -6,14 +6,11 @@ from torch import Tensor, device
 
 class EXPEncoder:
     """Represents the exponential encoder from the hdpg_actor_critic code but changed to only use a tensors from pytorch"""
-    def __init__(self, state_dim : int, hyper_dim : int):
+    def __init__(self, seed_base : Tensor, seed_bias : Tensor) -> None:
         """Will create an encoder that will work for vectors that have d dimensionality"""
         
-        self._s_hdvec = torch.randn(state_dim, hyper_dim, dtype=torch.float32)
-        self._bias = torch.randn(hyper_dim, dtype=torch.float32) * 2 * pi
-
-        self._s_hdvec.requires_grad_(False)
-        self._bias.requires_grad_(False)
+        self._s_hdvec = seed_base
+        self._bias = seed_bias
 
     def __call__(self, state : Tensor) -> Tensor:
         """Will return the encoder hypervector. State needs the same dimensionality that was used to create the encoder"""
@@ -32,15 +29,10 @@ class EXPEncoder:
         self._bias.to(dev)
 
 class RBFEncoder:
-    def __init__(self, state_size: int, hyper_dim: int):
-        self._in_size = state_size
-        self._out_size = hyper_dim
+    def __init__(self, seed_base : Tensor, seed_bias : Tensor):
 
-        self._s_hdvec = torch.randn(state_size, hyper_dim, dtype=torch.float32) / state_size #Why normalize with in_size
-        self._bias = 2 * pi * torch.randn(hyper_dim, dtype=torch.float32)
-
-        self._s_hdvec.requires_grad_(False)
-        self._bias.requires_grad_(False)
+        self._s_hdvec = seed_base
+        self._bias = seed_bias
 
     def __call__(self, v: torch.Tensor) -> torch.Tensor:
 
