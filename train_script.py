@@ -1,6 +1,6 @@
 from train_loop import train
 
-MAIN_EXPERIMENT_NAME = 'first_hdc_implementation'
+MAIN_EXPERIMENT_NAME = 'fixed_encoder'
 HDC = True
 
 def train_script():
@@ -29,7 +29,7 @@ def train_script():
     hyper_dim = [256, 512, 1024, 2048, 4096, 8192]
     
     for value in hyper_dim:
-        train(f"hyper_dim'{value}'", hypervec_dim=hyper_dim, log_dir=f'runs/{MAIN_EXPERIMENT_NAME}/hyper_dim_experiment', hdc_agent=HDC)
+        train(f"hyper_dim'{value}'", hypervec_dim=value, log_dir=f'runs/{MAIN_EXPERIMENT_NAME}/hyper_dim_experiment', hdc_agent=HDC)
 
     alpha_scale = [.60, .65, .7, .75, .8, .85, .9, .95, 1.0, 1.05, 1.1]
 
