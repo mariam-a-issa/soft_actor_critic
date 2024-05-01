@@ -34,5 +34,16 @@ class MemoryBuffer:
                           done = torch.stack(done, dim = 0))
     
     def add_data(self, trans : Transition) -> None:
-        """Will add the data from the single transition into the buffer"""
+        """Will add the data from the single transition into the buffer
+        Format of Transition:
+        
+        state: torch.Tensor vector of dim S
+        action: torch.Tensor vector of dim A
+        next_state: torch.Tensor vector of dim S
+        reward: torch.Tensor vector of dim 1
+        done: torch.Tensor vector of dim 1 (A value of 1 corresponds to True and 0 to false)
+        
+        Note: All these tensors should be float32 for best performance and should already be in the DEVICE
+        
+        """
         self._memory.append(trans)

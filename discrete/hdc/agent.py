@@ -77,9 +77,9 @@ class Agent:
         if steps % self._target_update == 0:
             self._target_q.update()
 
-    def save_actor(self, extension : str) -> None:
-        """Will save the actor"""
-        self._actor.save(f'bestweights{extension}.pt')
+    def save_actor(self, extra_info : str = '') -> None:
+        """Will save the actor to a file named bestweights_extrainfo"""
+        self._actor.save(f'bestweights_{extra_info}.pt')
 
     def to(self, device) -> None:
         """Moves agents assets to the device"""
