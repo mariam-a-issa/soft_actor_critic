@@ -24,14 +24,9 @@ class Agent:
                  summary_writer : SummaryWriter
                  ) -> None:
         
-        self._seed_base = torch.randn(input_size, hyper_dim, dtype=torch.float32) 
-        self._seed_bias = 2 * pi * torch.rand(hyper_dim, dtype=torch.float32)
         
-        self._seed_base.requires_grad_(False)
-        self._seed_bias.requires_grad_(False)
-        
-        self._actor_encoder = RBFEncoder(self._seed_base, self._seed_bias)
-        self._critic_encoder = EXPEncoder(self._seed_base, self._seed_bias)
+        self._actor_encoder = RBFEncoder(input_size, hyper_dim)
+        self._critic_encoder = EXPEncoder(input_size, hyper_dim)
 
         self._target_q = TargetQFunction(tau, None)
         self._alpha = Alpha(output_size, alpha_scale, critic_lr)
@@ -83,8 +78,6 @@ class Agent:
 
     def to(self, device) -> None:
         """Moves agents assets to the device"""
-        self._seed_base.to(device)
-        self._seed_bias.to(device)
         self._q_function.to(device)
         self._actor.to(device)
         self._target_q.to(device)
