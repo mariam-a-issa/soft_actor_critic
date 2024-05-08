@@ -6,11 +6,11 @@ from torch import Tensor, device
 
 class EXPEncoder:
     """Represents the exponential encoder from the hdpg_actor_critic code but changed to only use a tensors from pytorch"""
-    def __init__(self, seed_base : Tensor, seed_bias : Tensor) -> None:
+    def __init__(self, input_size : int, hyper_dim : int) -> None:
         """Will create an encoder that will work for vectors that have d dimensionality"""
         
-        self._s_hdvec = seed_base
-        self._bias = seed_bias
+        self._s_hdvec = torch.randn(input_size, hyper_dim, dtype=torch.float32) 
+        self._bias = 2 * pi * torch.rand(hyper_dim, dtype=torch.float32)
 
     def __call__(self, state : Tensor) -> Tensor:
         """Will return the encoder hypervector. State needs the same dimensionality that was used to create the encoder"""
@@ -29,10 +29,10 @@ class EXPEncoder:
         self._bias.to(dev)
 
 class RBFEncoder:
-    def __init__(self, seed_base : Tensor, seed_bias : Tensor):
+    def __init__(self, input_size : int, hyper_dim : int):
 
-        self._s_hdvec = seed_base
-        self._bias = seed_bias
+        self._s_hdvec = torch.randn(input_size, hyper_dim, dtype=torch.float32) 
+        self._bias = 2 * pi * torch.rand(hyper_dim, dtype=torch.float32)
 
     def __call__(self, v: torch.Tensor) -> torch.Tensor:
 
