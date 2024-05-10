@@ -55,12 +55,10 @@ class QFunction:
         with torch.no_grad():
             _, next_log_pi, next_action_probs = self._actor(trans.next_state)
             q_log_dif : Tensor = self._target(trans.next_state) - self._alpha() * next_log_pi
-
-            #Unsqueeze in order to have b x 1 x a · b x a x 1
-            #Which results in b x 1 x 1 to then be squeezed to b x 1 
-
-            next_v = torch.bmm(next_action_probs.unsqueeze(dim=1), q_log_dif.unsqueeze(dim=-1)).squeeze(dim=-1) #Squeeze dim=-1 so that we have a b x 1 instead of b
-
+            
+            #Batch wise dot product
+            next_v = (next_action_probs * q_log_dif).sum(dim=-1).unsqueeze(dim=-1)
+            
             next_q = trans.reward + (1 - trans.done) * self._discount * next_v
 
         q1 : Tensor = self._q1(trans.state)
@@ -154,9 +152,9 @@ class Alpha:
     
     def update(self, log_probs : Tensor, action_probs : Tensor, steps : int, summary_writer : SummaryWriter) -> None:
         """Will update according to equation 11"""
-        loss = torch.bmm(action_probs.detach().unsqueeze(dim=1), 
-                         ((-self._log_alpha.exp() * (log_probs + self._target_ent).detach()).unsqueeze(dim=-1))).mean()
-    
+        #Batch wise dot prodcut then mean
+        loss = (action_probs.detach() * (-self._log_alpha.exp() * (log_probs + self._target_ent).detach())).sum(dim=-1).mean()
+
         self._optim.zero_grad()
         loss.backward()
         self._optim.step()
@@ -201,8 +199,8 @@ class Actor(BaseNN):
         
         difference = self._alpha() * log_probs - q_v
 
-        #Using same trick as line 58
-        loss : Tensor = torch.bmm(action_probs.unsqueeze(dim=1), difference.unsqueeze(dim=-1)).mean() #Don't need squeeze as the result is b x 1 x 1 and mean will handle correctly
+        #Batch wise dot product then mean
+        loss : Tensor = (action_probs * difference).sum(dim=-1).mean()
 
         self._optim.zero_grad()
         loss.backward()
