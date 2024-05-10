@@ -101,8 +101,9 @@ def train(
     agent.to(_DEVICE)
 
     steps = 0
-    num_games = 0
+    num_games = 1
     total_return = 0
+    previous_episodic_reward = 0
     episodic_reward = 0
 
     def get_action(s : Tensor) -> Tensor:
@@ -139,11 +140,11 @@ def train(
             if done:
                 next_state = torch.tensor(env.reset()[0], device=_DEVICE, dtype=torch.float32)
                 num_games += 1
-                average_return = total_return / num_games
-                writer.add_scalar('Average return', average_return, steps)
-                writer.add_scalar('Episodic rerurn', episodic_reward, steps)
+                previous_episodic_reward = episodic_reward
                 episodic_reward = 0
             
+            writer.add_scalar('Average return', total_return / num_games, steps)
+            writer.add_scalar('Episodic rerurn', previous_episodic_reward, steps)
             state = next_state
 
     finally:
