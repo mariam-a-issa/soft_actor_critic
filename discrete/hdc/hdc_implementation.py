@@ -32,7 +32,8 @@ class Alpha:
     
     def update(self, log_probs : Tensor, action_probs : Tensor, steps : int, summary_writer : SummaryWriter) -> None:
         """Will update according to equation 11"""
-        loss = (action_probs.detach() * (-self._log_alpha.exp() * (log_probs + self._target_ent).detach())).mean()
+        loss = torch.bmm(action_probs.detach().unsqueeze(dim=1), 
+                         ((-self._log_alpha.exp() * (log_probs + self._target_ent).detach()).unsqueeze(dim=-1))).mean()
     
         self._optim.zero_grad()
         loss.backward()
