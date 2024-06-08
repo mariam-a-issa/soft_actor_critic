@@ -28,7 +28,7 @@ class Agent:
         self._actor = Actor(input_size, 
                             output_size, 
                             hidden_size,
-                            self._target_q,
+                            None,
                             self._alpha, 
                             policy_lr)
         
@@ -42,6 +42,7 @@ class Agent:
                                      discount)
         
         self._target_q.set_actual(self._q_function)
+        self._actor.set_actual(self._q_function)
         
         self._target_update = target_update
         self._update_freq = update_frequency

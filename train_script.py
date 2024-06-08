@@ -1,6 +1,6 @@
 from train_loop import train
 
-MAIN_EXPERIMENT_NAME = 'fixed_encoder'
+MAIN_EXPERIMENT_NAME = 'hdc_hyperparam_tuning'
 HDC = True
 
 def train_script():
@@ -36,10 +36,41 @@ def train_script():
     for value in alpha_scale:
         train(f"alpha_scale'{value}'", alpha_scale=value, log_dir=f'runs/{MAIN_EXPERIMENT_NAME}/alpha_scale_experiment', hdc_agent=HDC)
 
-    buffer_size = [32, 64, 128, 512]
+    sample_size = [32, 64, 128, 256, 512]
 
-    for value in buffer_size:
-        train(f"buffer_size'{value}'", buffer_size=value, log_dir=f'runs/{MAIN_EXPERIMENT_NAME}/buffer_size_experiment', hdc_agent=HDC)
+    for value in sample_size:
+        train(f"sample_size'{value}'", buffer_size=value, log_dir=f'runs/{MAIN_EXPERIMENT_NAME}/sample_experiment', hdc_agent=HDC)
+
+def extra_train():
+    sample_size = [32, 64, 128, 256, 512]
+
+    for value in sample_size:
+        train(f"sample_size'{value}'", sample_size=value, log_dir=f'runs/{MAIN_EXPERIMENT_NAME}/sample_experiment', hdc_agent=True)
+        
+def average_train():
+    hdc_dict = {
+        'alpha_lr' : 1e-5,
+        'alpha_scale' : .6,
+        'critic_lr' : .005,
+        'hypervec_dim' : 2048,
+        'policy_lr' : 1e-5,
+        'sample_size' : 512,
+        'tau' : .03
+    }
+    
+    nn_dict = {
+        'alpha_lr' : 1e-5,
+        'alpha_scale' : .7,
+        'critic_lr' : .01,
+        'policy_lr' : .01,
+        'tau' : .005
+    }
+    
+    #for i in range(3):
+    #   train(str(i), log_dir='runs/fixed_g_hparam/nn', **nn_dict, hdc_agent=False)
+        
+    for i in range(3):
+        train(str(i), log_dir='runs/fixed_g_hparam/hdc', **hdc_dict, hdc_agent=True)
 
 if __name__ == '__main__':
-    train_script()
+    average_train()

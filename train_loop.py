@@ -4,7 +4,7 @@ from torch.utils.tensorboard import SummaryWriter
 import torch
 from torch import Tensor
 
-import gym
+import gymnasium as gym
 
 from discrete import NNAgent, HDCAgent
 from data_collection import MemoryBuffer, Transition
@@ -12,13 +12,14 @@ from data_collection import MemoryBuffer, Transition
 #Hyperparameters
 #TODO Make these pass my command line
 
+LR = 3e-4
 HIDDEN_LAYER_SIZE = 256
 HYPER_VEC_DIM = 2048
-POLICY_LR = 3e-4
-CRITIC_LR = 3e-4
-ALPHA_LR = 3e-4
+POLICY_LR = LR
+CRITIC_LR = LR
+ALPHA_LR = LR
 DISCOUNT = .99
-TAU = .005
+TAU = .05
 ALPHA_SCALE = .89
 TARGET_UPDATE = 1
 UPDATE_FREQUENCY = 1
@@ -39,8 +40,8 @@ _DEVICE = torch.device(device)
 
 torch.set_default_device(_DEVICE)
 
-torch.manual_seed(0) #For making sure that it is more reproducable
-torch.use_deterministic_algorithms(True, warn_only=True)
+#torch.manual_seed(0) #For making sure that it is more reproducable
+#torch.use_deterministic_algorithms(True, warn_only=True)
 
 def train(
         extra_info : str = '', *,
@@ -66,12 +67,12 @@ def train(
 
     writer = SummaryWriter(log_dir + f'/run{extra_info}')
 
-    env = gym.make('CartPole-v1')
+    env = gym.make("MountainCar-v0")
 
     if hdc_agent:
         agent = HDCAgent(
-            4,
             2,
+            3,
             hypervec_dim,
             policy_lr,
             critic_lr,
@@ -84,8 +85,8 @@ def train(
         )
     else:
         agent = NNAgent(
-            4,
             2,
+            3,
             hidden_size,
             policy_lr,
             critic_lr,
@@ -121,6 +122,7 @@ def train(
             done = terminated or truncated
             total_return += reward
             episodic_reward += reward
+            reward *= .01
             next_state = torch.tensor(next_state, device=_DEVICE, dtype=torch.float32)
             trans = Transition( #states will be np arrays, actions will be tensors, the reward will be a float, and done will be a bool
                 state,
@@ -153,4 +155,4 @@ def train(
 
 if __name__ == '__main__':
     for i in range(3):
-        train(i, hdc_agent=True)
+        train(i, hdc_agent=False)
