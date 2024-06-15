@@ -1,11 +1,13 @@
 from train_loop import train
 
-MAIN_EXPERIMENT_NAME = 'hdc_hyperparam_tuning'
-HDC = True
+MAIN_EXPERIMENT_NAME = 'alpha_scale_hyper_param_tune'
+HDC = False
+NUM_RUNS = 3
 
 def train_script():
     """Will do multiple training loops"""
 
+    '''
     actor_lr = [.01, .005, .001, .0005, .0001, .00005, .00001]
 
     for value in actor_lr:
@@ -15,7 +17,7 @@ def train_script():
 
     for value in critic_lr:
         train(f"critic_lr'{value}'", critic_lr=value, log_dir=f'runs/{MAIN_EXPERIMENT_NAME}/critic_lr_experiment', hdc_agent=HDC)
-
+    
     alpha_lr = [.01, .005, .001, .0005, .0001, .00005, .00001]
 
     for value in alpha_lr:
@@ -30,12 +32,15 @@ def train_script():
     
     for value in hyper_dim:
         train(f"hyper_dim'{value}'", hypervec_dim=value, log_dir=f'runs/{MAIN_EXPERIMENT_NAME}/hyper_dim_experiment', hdc_agent=HDC)
-
-    alpha_scale = [.60, .65, .7, .75, .8, .85, .9, .95, 1.0, 1.05, 1.1]
+    '''
+        
+    alpha_scale = [.1, .15, .2, .25, .3, .35, .4, .45, .5, .55, .6, .65, .7, .75, .8, .85, .9, .95, 1]
 
     for value in alpha_scale:
-        train(f"alpha_scale'{value}'", alpha_scale=value, log_dir=f'runs/{MAIN_EXPERIMENT_NAME}/alpha_scale_experiment', hdc_agent=HDC)
+        for i in range(NUM_RUNS):
+            train(f"alpha_scale'{value}_run{i}'", alpha_scale=value, log_dir=f'runs/{MAIN_EXPERIMENT_NAME}/alpha_scale_experiment', hdc_agent=HDC)
 
+    '''
     sample_size = [32, 64, 128, 256, 512]
 
     for value in sample_size:
@@ -71,6 +76,7 @@ def average_train():
         
     for i in range(3):
         train(str(i), log_dir='runs/fixed_g_hparam/hdc', **hdc_dict, hdc_agent=True)
+'''
 
 if __name__ == '__main__':
-    average_train()
+    train_script()

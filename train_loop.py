@@ -19,17 +19,17 @@ POLICY_LR = LR
 CRITIC_LR = LR
 ALPHA_LR = LR
 DISCOUNT = .99
-TAU = .05
-ALPHA_SCALE = .89
-TARGET_UPDATE = 1
-UPDATE_FREQUENCY = 1
+TAU = .005
+ALPHA_SCALE = .98
+TARGET_UPDATE = 1 
+UPDATE_FREQUENCY = 1 #Third I changed update from 4 to 1
 EXPLORE_STEPS = 0
 BUFFER_SIZE = 10 ** 6
 SAMPLE_SIZE = 64
 
-LOG_DIR = './runs/first_test'
+LOG_DIR = './runs/large__alpha'
 
-MAX_STEPS = 1e5
+MAX_STEPS = 6e5
 
 if torch.cuda.is_available():
     device = f'cuda:{torch.cuda.current_device()}'
@@ -66,13 +66,16 @@ def train(
     buffer = MemoryBuffer(buffer_size, sample_size)
 
     writer = SummaryWriter(log_dir + f'/run{extra_info}')
-
-    env = gym.make("MountainCar-v0")
+    
+    #"LunarLander-v2"
+    #"CartPole-v1"
+    #"MountainCar-v0"
+    env = gym.make("LunarLander-v2")
 
     if hdc_agent:
         agent = HDCAgent(
-            2,
-            3,
+            env.observation_space.shape[0],
+            env.action_space.n,
             hypervec_dim,
             policy_lr,
             critic_lr,
@@ -85,8 +88,8 @@ def train(
         )
     else:
         agent = NNAgent(
-            2,
-            3,
+            env.observation_space.shape[0],
+            env.action_space.n,
             hidden_size,
             policy_lr,
             critic_lr,

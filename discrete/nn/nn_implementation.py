@@ -35,8 +35,8 @@ class QFunction:
         self._q1 = BaseNN(input_size, output_size, hidden_size, id=1)
         self._q2 = BaseNN(input_size, output_size, hidden_size, id=2)
         
-        self._optim1 = optim.Adam(self._q1.parameters(), lr=lr)
-        self._optim2 = optim.Adam(self._q2.parameters(), lr=lr)
+        self._optim1 = optim.Adam(self._q1.parameters(), lr=lr, eps=_EPS)
+        self._optim2 = optim.Adam(self._q2.parameters(), lr=lr, eps=_EPS)
 
         self._actor = actor
         self._target = target
@@ -157,7 +157,7 @@ class Alpha:
         
         self._target_ent = -scale * torch.log(1 / torch.tensor(action_space_size))
         self._log_alpha = torch.zeros(1, requires_grad=True)
-        self._optim = optim.Adam([self._log_alpha], lr = lr)
+        self._optim = optim.Adam([self._log_alpha], lr = lr, eps=_EPS)
         self._action_s = action_space_size
 
     def to(self, device) -> None:
@@ -196,7 +196,7 @@ class Actor(BaseNN):
         super().__init__(input_size, output_size, hidden_size)
         self._q_func = target
         self._alpha = alpha
-        self._optim = optim.Adam(self.parameters(), lr=lr)
+        self._optim = optim.Adam(self.parameters(), lr=lr, eps=_EPS)
         
         self._action_s = output_size
 
