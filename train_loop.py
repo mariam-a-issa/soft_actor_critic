@@ -20,12 +20,12 @@ CRITIC_LR = LR
 ALPHA_LR = LR
 DISCOUNT = .99
 TAU = .005
-ALPHA_SCALE = .98
+ALPHA_SCALE = .75 #Kinda for the lunar lander
 TARGET_UPDATE = 1 
 UPDATE_FREQUENCY = 1 #Third I changed update from 4 to 1
 EXPLORE_STEPS = 0
 BUFFER_SIZE = 10 ** 6
-SAMPLE_SIZE = 64
+SAMPLE_SIZE = 256
 
 LOG_DIR = './runs/large__alpha'
 
@@ -40,8 +40,8 @@ _DEVICE = torch.device(device)
 
 torch.set_default_device(_DEVICE)
 
-#torch.manual_seed(0) #For making sure that it is more reproducable
-#torch.use_deterministic_algorithms(True, warn_only=True)
+torch.manual_seed(0) #For making sure that it is more reproducable
+torch.use_deterministic_algorithms(True, warn_only=True)
 
 def train(
         extra_info : str = '', *,
@@ -65,7 +65,7 @@ def train(
 
     buffer = MemoryBuffer(buffer_size, sample_size)
 
-    writer = SummaryWriter(log_dir + f'/run{extra_info}')
+    writer = SummaryWriter(log_dir + f'/{extra_info}')
     
     #"LunarLander-v2"
     #"CartPole-v1"
