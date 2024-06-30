@@ -25,22 +25,25 @@ class Alpha:
         self._target_ent = -scale * torch.log(1 / torch.tensor(action_space_size))
         self._log_alpha = torch.zeros(1, requires_grad=True)
         self._optim = optim.Adam([self._log_alpha], lr = lr, eps=_EPS)
+        self._action_s = action_space_size
 
     def __call__(self) -> float:
         """Will give the current alpha"""
         return self._log_alpha.exp().item()
     
-    def update(self, log_probs : Tensor, action_probs : Tensor, steps : int, summary_writer : SummaryWriter) -> None:
+    def update(self, log_probs : Tensor, action_probs : Tensor, steps : int, batch_size : int, summary_writer : SummaryWriter) -> None:
         """Will update according to equation 11"""
         
         #Essentially batch dot product
-        loss = (action_probs.detach() * (-self._log_alpha.exp() * (log_probs + self._target_ent).detach())).sum(dim=-1).mean()
-        
+        loss = torch.bmm(action_probs.detach().view(batch_size, 1, self._action_s).detach(), 
+                        (-self._log_alpha.exp() * (log_probs + self._target_ent).detach()).view(batch_size, self._action_s, 1)).mean()
+
         self._optim.zero_grad()
         loss.backward()
         self._optim.step()
 
         summary_writer.add_scalar('Alpha Loss', loss, steps)
+        summary_writer.add_scalar('Current Alpha', self(), steps)
 
     def to(self, dev : device) -> None:
         self._target_ent.to(dev)
@@ -104,6 +107,7 @@ class QFunction:
         self._lr = lr
         self._discount = discount
         self._alpha = alpha
+        self._action_s = action_dim
 
     def __call__(self, state) -> Tensor:
         """State should be an encoded h_vect"""
@@ -112,19 +116,23 @@ class QFunction:
     def update(self, trans : Transition, steps : int, summary_writer : SummaryWriter) -> Tensor:
         """Use equation 10 to find loss and then bind loss
            Return the ce_state loss in order to not recalculate it"""
+        
+        batch_size = len(trans.state)
 
         #Start of copied code from nn_implementation
         with torch.no_grad():
             ae_next_state = self._a_encoder(trans.next_state)
             ce_next_state = self._c_encoder(trans.next_state)
             ce_state = self._c_encoder(trans.state)
-        
+
+            next_action_probs : Tensor
             _, next_log_pi, next_action_probs = self._actor(ae_next_state)
             q_log_dif : Tensor = self._target(ce_next_state) - self._alpha() * next_log_pi
 
  
             #Essentially batch dot product
-            next_v = (next_action_probs * q_log_dif).sum(dim=-1).unsqueeze(dim=-1)
+            next_v = torch.bmm(next_action_probs.view(batch_size, 1, self._action_s), 
+                               q_log_dif.view(batch_size, self._action_s, 1)).view(batch_size, 1)
 
             next_q = trans.reward + (1 - trans.done) * self._discount * next_v
 
@@ -218,7 +226,9 @@ class Actor(nn.Module):
         self._target = target_q
         self._alpha = alpha
 
-        self._optim = optim.Adam(self.parameters(), lr=lr)
+        self._optim = optim.Adam(self.parameters(), lr=lr, eps = _EPS)
+
+        self._action_s = action_dim
 
     def forward(self, state : Tensor) -> tuple[Tensor]:
         """Will give the action, log_prob, action_probs of action"""
@@ -236,22 +246,25 @@ class Actor(nn.Module):
         """Using according to equation 12 as well as gradient based """
         
         #Same as the nn_implementation as it is doing gradient
+
+        batch_size = len(trans.state)
         
         ae_state = self._a_encoder(trans.state)
         q_v = self._target(ce_state)
 
+        action_probs : Tensor
         _, log_probs, action_probs = self(ae_state)
         
-        difference = self._alpha() * log_probs - q_v
+        difference : Tensor = self._alpha() * log_probs - q_v
 
         #Essentially batch dot product
-        loss : Tensor = (action_probs * difference).sum(dim=-1).mean()
+        loss : Tensor = torch.bmm(action_probs.view(batch_size, 1, self._action_s),  difference.view(batch_size, self._action_s, 1)).mean()
 
         self._optim.zero_grad()
         loss.backward()
         self._optim.step()
 
-        self._alpha.update(log_probs, action_probs, steps, summary_writer) #Do the update in the actor in order to not recaluate probs
+        self._alpha.update(log_probs, action_probs, steps, batch_size, summary_writer) #Do the update in the actor in order to not recaluate probs
 
         summary_writer.add_scalar('Actor Loss', loss, steps)
 

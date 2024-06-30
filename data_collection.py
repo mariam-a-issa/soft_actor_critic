@@ -15,16 +15,17 @@ Transition = namedtuple('Transition',
 class MemoryBuffer:
     """A simple replay FIFO replay buffer"""
 
-    def __init__(self, buffer_length : int, sample_size : int) -> None:
+    def __init__(self, buffer_length : int, sample_size : int, random : random) -> None:
         self._memory = deque(maxlen=buffer_length)
         self._sample_size = sample_size
+        self._random = random
 
     def sample(self) -> Transition:
         """Will randomly sample a batch of transitions from the replay buffer"""
         if len(self._memory) <= self._sample_size:
             sample = self._memory #sample will be a list of transitions
         else:
-            sample = random.sample(self._memory, self._sample_size)
+            sample = self._random.sample(self._memory, self._sample_size)
 
         state, action, next_state, reward, done = zip(*sample) #unpack list and create tuples of each data point in transition
         return Transition(state = torch.stack(state, dim = 0), #Each element of transition is the batch of values

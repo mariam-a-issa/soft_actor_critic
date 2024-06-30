@@ -180,7 +180,7 @@ class Alpha:
         self._optim.step()
 
         summary_writer.add_scalar('Alpha Loss', loss, steps)
-        summary_writer.add_scalar('Current Alpha', self._log_alpha.exp(), steps)
+        summary_writer.add_scalar('Current Alpha', self(), steps)
 
 
 class Actor(BaseNN):

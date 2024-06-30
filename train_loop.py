@@ -1,4 +1,8 @@
 from random import randint
+import random
+import csv
+from copy import deepcopy
+from pathlib import Path
 
 from torch.utils.tensorboard import SummaryWriter
 import torch
@@ -10,7 +14,6 @@ from discrete import NNAgent, HDCAgent
 from data_collection import MemoryBuffer, Transition
 
 #Hyperparameters
-#TODO Make these pass my command line
 
 LR = 3e-4
 HIDDEN_LAYER_SIZE = 256
@@ -22,7 +25,7 @@ DISCOUNT = .99
 TAU = .005
 ALPHA_SCALE = .75 #Kinda for the lunar lander
 TARGET_UPDATE = 1 
-UPDATE_FREQUENCY = 1 #Third I changed update from 4 to 1
+UPDATE_FREQUENCY = 1 
 EXPLORE_STEPS = 0
 BUFFER_SIZE = 10 ** 6
 SAMPLE_SIZE = 256
@@ -30,18 +33,6 @@ SAMPLE_SIZE = 256
 LOG_DIR = './runs/large__alpha'
 
 MAX_STEPS = 6e5
-
-if torch.cuda.is_available():
-    device = f'cuda:{torch.cuda.current_device()}'
-else:
-    device = 'cpu'
-
-_DEVICE = torch.device(device)
-
-torch.set_default_device(_DEVICE)
-
-torch.manual_seed(0) #For making sure that it is more reproducable
-torch.use_deterministic_algorithms(True, warn_only=True)
 
 def train(
         extra_info : str = '', *,
@@ -60,17 +51,42 @@ def train(
         sample_size : int = SAMPLE_SIZE,
         max_steps : int = MAX_STEPS,
         hdc_agent : bool = False,
-        hypervec_dim : int = HYPER_VEC_DIM) -> None:
+        hypervec_dim : int = HYPER_VEC_DIM,
+        environment_name : str = 'LunarLander-v2',
+        seed : int = None,
+        gpu : bool = True,) -> None:
     """Will be the main training loop"""
 
-    buffer = MemoryBuffer(buffer_size, sample_size)
+    h_params_dict = deepcopy(locals())
+    del h_params_dict['extra_info']
+    del h_params_dict['log_dir']
+    _csv_of_hparams(log_dir + '/' + extra_info, h_params_dict)
 
-    writer = SummaryWriter(log_dir + f'/{extra_info}')
+    buffer = MemoryBuffer(buffer_size, sample_size, random)
+
+    writer = SummaryWriter(log_dir + '/' + extra_info)
     
     #"LunarLander-v2"
     #"CartPole-v1"
     #"MountainCar-v0"
-    env = gym.make("LunarLander-v2")
+    env = gym.make(environment_name)
+    
+    seed_dict = dict() #A hack to passing in random seeds or not
+    
+    if seed is not None:
+        torch.manual_seed(seed) #For making sure that it is more reproducable
+        torch.use_deterministic_algorithms(True, warn_only=True)
+        seed_dict['seed'] = seed
+        random.seed(seed)
+
+    if torch.cuda.is_available() and gpu:
+        device = f'cuda:{torch.cuda.current_device()}'
+    else:
+       device = 'cpu'
+
+    device_obj = torch.device(device)
+
+    torch.set_default_device(device_obj)
 
     if hdc_agent:
         agent = HDCAgent(
@@ -102,7 +118,7 @@ def train(
             writer
         )
 
-    agent.to(_DEVICE)
+    agent.to(device_obj)
 
     steps = 0
     num_games = 1
@@ -114,9 +130,9 @@ def train(
         if explore_steps <= steps:
             return agent(s)
         else:
-            return torch.tensor(randint(0, 1))
+            return torch.tensor(randint(0, env.action_space.n-1))
         
-    state = torch.tensor(env.reset()[0], device=_DEVICE, dtype=torch.float32)
+    state = torch.tensor(env.reset(**seed_dict)[0], device=device_obj, dtype=torch.float32)
 
     try:
         while max_steps > steps:
@@ -126,13 +142,13 @@ def train(
             total_return += reward
             episodic_reward += reward
             reward *= .01
-            next_state = torch.tensor(next_state, device=_DEVICE, dtype=torch.float32)
+            next_state = torch.tensor(next_state, device=device_obj, dtype=torch.float32)
             trans = Transition( #states will be np arrays, actions will be tensors, the reward will be a float, and done will be a bool
                 state,
                 action,
                 next_state,
-                torch.tensor([reward], device=_DEVICE, dtype=torch.float32),
-                torch.tensor([terminated], device=_DEVICE, dtype=torch.float32)
+                torch.tensor([reward], device=device_obj, dtype=torch.float32),
+                torch.tensor([terminated], device=device_obj, dtype=torch.float32)
             )
 
             buffer.add_data(trans)
@@ -143,7 +159,7 @@ def train(
             steps += 1
 
             if done:
-                next_state = torch.tensor(env.reset()[0], device=_DEVICE, dtype=torch.float32)
+                next_state = torch.tensor(env.reset(**seed_dict)[0], device=device_obj, dtype=torch.float32)
                 num_games += 1
                 previous_episodic_reward = episodic_reward
                 episodic_reward = 0
@@ -155,6 +171,17 @@ def train(
     finally:
         agent.save_actor(extra_info)
         env.close()
+
+def _csv_of_hparams(log_dir : str, h_params_dict : dict):
+    """Creates a csv at the log dir with the given hyperparameters"""
+
+    file = Path(f'{log_dir}/hparams.csv')
+    file.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(file, 'w+') as csv_file:
+        writer = csv.writer(csv_file)
+        for key, value in h_params_dict.items():
+            writer.writerow([key, value])
 
 if __name__ == '__main__':
     for i in range(3):
