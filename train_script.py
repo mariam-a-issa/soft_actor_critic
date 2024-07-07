@@ -2,17 +2,17 @@ from copy import copy
 
 from train_loop import train
 
-MAIN_EXPERIMENT_NAME = 'test_policy_lr'
-NUM_RUNS = 3
-OTHER_HPARAMS ={ #Just the default params that may be different than the ones in the training file
-    'hdc_agent' : True,
-    'alpha_scale' : .75,
-    'alpha_lr' : 1e-5,
-    'critic_lr' : .001,
+MAIN_EXPERIMENT_NAME = 'test'
+NUM_RUNS = 1
+OTHER_HPARAMS = { #Just the default params that may be different than the ones in the training file
+    'hdc_agent' : False,
+    'alpha_scale' : .2,
+    'alpha_lr' : 3e-4,
+    'critic_lr' : 3e-4,
     'hypervec_dim' : 2048,
-    'policy_lr' : 1e-5,
-    'sample_size' : 512,
-    'tau' : .03,
+    'policy_lr' : 3e-4,
+    'sample_size' : 256,
+    'tau' : .005,
     'seed' : 0
 }
 
@@ -35,4 +35,4 @@ def train_hyper_param(name : str, values : list[float]):
 
 
 if __name__ == '__main__':
-    train_hyper_param('policy_lr', [.009, .007, .005, .003, .001])
+    train_hyper_param('seed', [0, 1, 2])

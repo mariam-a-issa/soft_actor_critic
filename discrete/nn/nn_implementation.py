@@ -10,11 +10,6 @@ from torch.nn.utils import clip_grad_norm_
 from .base_nn import BaseNN
 from data_collection import Transition
 
-import logging
-
-# Setup logging
-logging.basicConfig(level=logging.DEBUG)
-
 #Parameter update implementation from https://arxiv.org/abs/1910.07207
 
 _EPS = 1e-4 #Term used in cleanrl
@@ -165,14 +160,14 @@ class Alpha:
         self._target_ent.to(device)
         self._log_alpha.to(device)
 
-    def __call__(self) -> float:
+    def __call__(self) -> Tensor:
         """Will give the current alpha"""
         return self._log_alpha.exp()
     
     def update(self, log_probs : Tensor, action_probs : Tensor, steps : int, batch_size : int, summary_writer : SummaryWriter) -> None:
         """Will update according to equation 11"""
         #Batch wise dot prodcut then mean
-        loss = torch.bmm(action_probs.detach().view(batch_size, 1, self._action_s).detach(), 
+        loss = torch.bmm(action_probs.detach().view(batch_size, 1, self._action_s), 
                          (-self._log_alpha.exp() * (log_probs + self._target_ent).detach()).view(batch_size, self._action_s, 1)).mean()
 
         self._optim.zero_grad()
@@ -189,7 +184,7 @@ class Actor(BaseNN):
                  input_size: int,
                  output_size: int, 
                  hidden_size,
-                 target : QFunction, 
+                 target : QFunctionTarget, 
                  alpha : 'Alpha',
                  lr : float) -> None:
         

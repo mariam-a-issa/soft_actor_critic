@@ -27,7 +27,7 @@ class Alpha:
         self._optim = optim.Adam([self._log_alpha], lr = lr, eps=_EPS)
         self._action_s = action_space_size
 
-    def __call__(self) -> float:
+    def __call__(self) -> Tensor:
         """Will give the current alpha"""
         return self._log_alpha.exp().item()
     

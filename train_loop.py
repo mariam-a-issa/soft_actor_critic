@@ -74,7 +74,7 @@ def train(
     seed_dict = dict() #A hack to passing in random seeds or not
     
     if seed is not None:
-        torch.manual_seed(seed) #For making sure that it is more reproducable
+        torch.manual_seed(seed) 
         torch.use_deterministic_algorithms(True, warn_only=True)
         seed_dict['seed'] = seed
         random.seed(seed)
@@ -141,7 +141,6 @@ def train(
             done = terminated or truncated
             total_return += reward
             episodic_reward += reward
-            reward *= .01
             next_state = torch.tensor(next_state, device=device_obj, dtype=torch.float32)
             trans = Transition( #states will be np arrays, actions will be tensors, the reward will be a float, and done will be a bool
                 state,
