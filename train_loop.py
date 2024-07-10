@@ -181,6 +181,7 @@ def _csv_of_hparams(log_dir : str, h_params_dict : dict):
         writer = csv.writer(csv_file)
         for key, value in h_params_dict.items():
             writer.writerow([key, value])
+        #writer.writerow(['clip_critic', True])
 
 if __name__ == '__main__':
     for i in range(3):
