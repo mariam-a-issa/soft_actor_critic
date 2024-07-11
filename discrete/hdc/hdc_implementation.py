@@ -87,8 +87,8 @@ class QFunction:
 
     def __init__(self, hvec_dim : int, 
                  action_dim : int,
-                 actor_encoder : EXPEncoder, 
-                 critic_encoder : RBFEncoder, 
+                 actor_encoder : RBFEncoder, 
+                 critic_encoder : EXPEncoder, 
                  actor : 'Actor',
                  target : 'TargetQFunction',
                  alpha : Alpha,
@@ -211,14 +211,12 @@ class Actor(nn.Module):
                  hvec_dim : int, 
                  action_dim : int, 
                  lr : int, 
-                 actor_encoder : EXPEncoder,
-                 critic_encoder : RBFEncoder,
+                 actor_encoder : RBFEncoder,
                  alpha : Alpha, 
                  target_q : TargetQFunction) -> None:
         super().__init__()
 
         self._a_encoder = actor_encoder
-        self._c_encoder = critic_encoder
         
         self._logits = nn.Linear(hvec_dim, action_dim, bias=False)
         self._logits.weight.data = torch.zeros((action_dim, hvec_dim))

@@ -35,7 +35,6 @@ class Agent:
                             output_size,
                             policy_lr,
                             self._actor_encoder,
-                            self._critic_encoder,
                             self._alpha,
                             self._target_q)
         
