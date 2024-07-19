@@ -250,13 +250,13 @@ class Actor(nn.Module):
         ae_state = self._a_encoder(trans.state)
         q_v = self._target(ce_state)
 
-        action_probs : Tensor
+        action_probs : Tensor; log_probs : Tensor; difference : Tensor ; loss : Tensor
         _, log_probs, action_probs = self(ae_state)
         
-        difference : Tensor = self._alpha() * log_probs - q_v
+        difference = self._alpha() * log_probs - q_v
 
         #Essentially batch dot product
-        loss : Tensor = torch.bmm(action_probs.view(batch_size, 1, self._action_s),  difference.view(batch_size, self._action_s, 1)).mean()
+        loss = torch.bmm(action_probs.view(batch_size, 1, self._action_s),  difference.view(batch_size, self._action_s, 1)).mean()
 
         self._optim.zero_grad()
         loss.backward()
@@ -265,6 +265,8 @@ class Actor(nn.Module):
         self._alpha.update(log_probs, action_probs, steps, batch_size, summary_writer) #Do the update in the actor in order to not recaluate probs
 
         summary_writer.add_scalar('Actor Loss', loss, steps)
+        summary_writer.add_scalars('Actor Probs', {f'prob_{i}': prob for i, prob in enumerate(action_probs.mean(0))}, steps)
+        summary_writer.add_scalar('Actor Entropy', (action_probs @ log_probs.transpose(0,1)).mean(), steps)
 
     def save(self, file_name ='best_weights.pt') -> None:
         """Will save the model in the folder 'model' in the dir that the script was run in."""

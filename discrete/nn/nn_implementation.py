@@ -212,15 +212,15 @@ class Actor(BaseNN):
 
         batch_size = len(trans.state)
         
-        action_probs : Tensor
+        action_probs : Tensor; log_probs : Tensor; difference : Tensor; loss : Tensor
         _, log_probs, action_probs = self(trans.state)
 
         # with torch.no_grad():
         q_v = self._q_func(trans.state)
         
-        difference : Tensor = self._alpha() * log_probs - q_v
+        difference = self._alpha() * log_probs - q_v
 
-        loss : Tensor = torch.bmm(action_probs.view(batch_size, 1, self._action_s),  difference.view(batch_size, self._action_s, 1)).mean()
+        loss = torch.bmm(action_probs.view(batch_size, 1, self._action_s),  difference.view(batch_size, self._action_s, 1)).mean()
 
         self._optim.zero_grad()
         loss.backward()
@@ -230,6 +230,8 @@ class Actor(BaseNN):
 
         #logging.debug(f"Actor update step {steps}, loss: {loss.item()}, log_probs: {log_probs}, action_probs: {action_probs}")
         summary_writer.add_scalar('Actor Loss', loss, steps)
+        summary_writer.add_scalars('Actor Probs', {f'prob_{i}': prob for i, prob in enumerate(action_probs.mean(0))}, steps)
+        summary_writer.add_scalar('Actor Entropy', (action_probs @ log_probs.transpose(0,1)).mean(), steps)
         
     def set_actual(self, q_func : QFunction) -> None:
         """Will actually set the q_func if it was not set in the constructor"""
