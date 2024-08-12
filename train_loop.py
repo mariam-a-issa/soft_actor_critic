@@ -10,7 +10,7 @@ from torch import Tensor
 
 import gymnasium as gym
 
-from discrete import NNAgent, HDCAgent
+from discrete import create_hdc_agent, create_nn_agent
 from data_collection import MemoryBuffer, Transition
 
 #Hyperparameters
@@ -26,6 +26,7 @@ TAU = .005
 ALPHA_SCALE = .75 #Kinda for the lunar lander
 TARGET_UPDATE = 1 
 UPDATE_FREQUENCY = 1 
+LEARNING_STEPS = 4
 EXPLORE_STEPS = 0
 BUFFER_SIZE = 10 ** 6
 SAMPLE_SIZE = 256
@@ -54,7 +55,8 @@ def train(
         hypervec_dim : int = HYPER_VEC_DIM,
         environment_name : str = 'LunarLander-v2',
         seed : int = None,
-        gpu : bool = True,) -> None:
+        gpu : bool = True,
+        learning_steps : int = LEARNING_STEPS) -> None:
     """Will be the main training loop"""
 
     h_params_dict = deepcopy(locals())
@@ -88,8 +90,9 @@ def train(
 
     torch.set_default_device(device_obj)
 
+    
     if hdc_agent:
-        agent = HDCAgent(
+        agent = create_hdc_agent(
             env.observation_space.shape[0],
             env.action_space.n,
             hypervec_dim,
@@ -100,10 +103,12 @@ def train(
             alpha_scale,
             target_update,
             update_frequency,
-            writer
+            writer,
+            learning_steps,
+            device_obj,   
         )
     else:
-        agent = NNAgent(
+        agent = create_nn_agent(
             env.observation_space.shape[0],
             env.action_space.n,
             hidden_size,
@@ -115,10 +120,10 @@ def train(
             alpha_scale,
             target_update,
             update_frequency,
-            writer
+            writer,
+            learning_steps,
+            device_obj
         )
-
-    agent.to(device_obj)
 
     steps = 0
     num_games = 1
@@ -153,7 +158,7 @@ def train(
             buffer.add_data(trans)
             
             if explore_steps <= steps:
-                agent.update(buffer.sample(), steps)
+                agent.update(buffer, steps)
 
             steps += 1
 

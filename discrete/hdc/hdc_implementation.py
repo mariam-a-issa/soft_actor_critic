@@ -3,7 +3,7 @@ from pathlib import Path
 import os
 import math
 
-from torch import nn, Tensor, device, optim
+from torch import nn, Tensor, optim
 import torch
 from torch.utils.tensorboard import SummaryWriter
 from torch.distributions import Categorical
@@ -29,9 +29,9 @@ class Alpha:
 
     def __call__(self) -> Tensor:
         """Will give the current alpha"""
-        return self._log_alpha.exp().item()
+        return self._log_alpha.exp()
     
-    def update(self, log_probs : Tensor, action_probs : Tensor, steps : int, batch_size : int, summary_writer : SummaryWriter) -> None:
+    def update(self, log_probs : Tensor, action_probs : Tensor, batch_size : int) -> tuple[Tensor, Tensor]:
         """Will update according to equation 11"""
         
         #Essentially batch dot product
@@ -41,11 +41,11 @@ class Alpha:
         self._optim.zero_grad()
         loss.backward()
         self._optim.step()
+        
+        return loss, self().squeeze() #Squeeze so that it is just the value
 
-        summary_writer.add_scalar('Alpha Loss', loss, steps)
-        summary_writer.add_scalar('Current Alpha', self(), steps)
 
-    def to(self, dev : device) -> None:
+    def to(self, dev : torch.device) -> None:
         self._target_ent.to(dev)
         self._log_alpha.to(dev)
 
@@ -79,7 +79,7 @@ class QModel:
     def parameters(self) -> Tensor:
         return self._model
     
-    def to(self, dev : device) -> None:
+    def to(self, dev : torch.device) -> None:
         self._model.to(dev)
     
 
@@ -113,9 +113,9 @@ class QFunction:
         """State should be an encoded h_vect"""
         return torch.min(self._q1(state), self._q2(state))
     
-    def update(self, trans : Transition, steps : int, summary_writer : SummaryWriter) -> Tensor:
+    def update(self, trans : Transition) -> tuple[Tensor, Tensor]:
         """Use equation 10 to find loss and then bind loss
-           Return the ce_state loss in order to not recalculate it"""
+           Return the ce_state in order to not recalculate it and the loss"""
         
         batch_size = len(trans.state)
 
@@ -149,9 +149,6 @@ class QFunction:
             l1 : Tensor = next_q - q1_a
             l2 : Tensor = next_q - q2_a
 
-            summary_writer.add_scalar("QFunc1 Loss", l1.mean(), steps)
-            summary_writer.add_scalar("QFunc2 Loss", l2.mean(), steps)
-
             #Creates a matrix where each row is the hypervector that should be bundled with the model
             matrix_l1 = l1 * ce_state * self._lr
             matrix_l2 = l2 * ce_state * self._lr
@@ -162,10 +159,10 @@ class QFunction:
             self._q1.parameters().index_add_(0, trans.action.squeeze(), matrix_l1)
             self._q2.parameters().index_add_(0, trans.action.squeeze(), matrix_l2)
         
-        return ce_state 
+        return ce_state, torch.stack((1/2 * (l1 ** 2).mean(), 1/2 * (l2 ** 2).mean()))
 
 
-    def to(self, device : device) -> None:
+    def to(self, device : torch.device) -> None:
         """Moves q function to device"""
         self._q1.to(device)
         self._q2.to(device)
@@ -201,7 +198,7 @@ class TargetQFunction:
         for param, target_param in zip(self._actual._q2.parameters(), self._q2.parameters()):
             target_param.data.copy_(self._tau * param.data + (1 - self._tau) * target_param.data)
     
-    def to(self, dev : device) -> None:
+    def to(self, dev : torch.device) -> None:
         self._q1.to(dev)
         self._q2.to(dev)
 
@@ -240,8 +237,8 @@ class Actor(nn.Module):
 
         return action, log_prob, action_probs
     
-    def update(self, trans : Transition, steps : int, summary_writer : SummaryWriter, ce_state : Tensor):
-        """Using according to equation 12 as well as gradient based """
+    def update(self, trans : Transition, ce_state : Tensor) -> Tensor:
+        """Using according to equation 12 as well as gradient based and return the actors loss, actors antropy, alpha loss, and the current alpha"""
         
         #Same as the nn_implementation as it is doing gradient
 
@@ -262,12 +259,13 @@ class Actor(nn.Module):
         loss.backward()
         self._optim.step()
 
-        self._alpha.update(log_probs, action_probs, steps, batch_size, summary_writer) #Do the update in the actor in order to not recaluate probs
+        alpha_loss, alpha = self._alpha.update(log_probs, action_probs, batch_size) #Do the update in the actor in order to not recaluate probs
 
-        summary_writer.add_scalar('Actor Loss', loss, steps)
-        summary_writer.add_scalars('Actor Probs', {f'prob_{i}': prob for i, prob in enumerate(action_probs.mean(0))}, steps)
-        summary_writer.add_scalar('Actor Entropy', (action_probs @ log_probs.transpose(0,1)).mean(), steps)
+        with torch.no_grad():
+            ent = -torch.bmm(action_probs.view(batch_size, 1, self._action_s), log_probs.view(batch_size, self._action_s, 1)).mean()
 
+            return torch.stack((loss, ent, alpha_loss, alpha))
+        
     def save(self, file_name ='best_weights.pt') -> None:
         """Will save the model in the folder 'model' in the dir that the script was run in."""
 

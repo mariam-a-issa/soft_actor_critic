@@ -39,6 +39,7 @@ class QFunction:
         
         self._action_s = output_size
 
+
     def set_actor(self, actor : 'Actor') -> None:
         """Will set the actor used for parameter updates"""
         self._actor = actor
@@ -209,7 +210,7 @@ class Actor(BaseNN):
 
         alpha_loss, alpha = self._alpha.update(log_probs, action_probs, batch_size) #Do the update in the actor in order to not recaluate probs
 
-        ent = -torch.bmm(action_probs.view(batch_size, 1, self._action_s), log_probs.view(batch_size, self._action_s, 1)).mean()
+        ent = torch.bmm(action_probs.view(batch_size, 1, self._action_s), log_probs.view(batch_size, self._action_s, 1)).mean()
         
         return torch.stack((loss, ent, alpha_loss, alpha))
         

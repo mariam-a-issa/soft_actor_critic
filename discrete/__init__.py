@@ -1,2 +1,1 @@
-from .nn import Agent as NNAgent
-from .hdc import Agent as HDCAgent
+from .agents import create_nn_agent, create_hdc_agent

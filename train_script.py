@@ -2,20 +2,23 @@ from copy import copy
 
 from train_loop import train
 
-MAIN_EXPERIMENT_NAME = 'actual_no_clip_higher_entropy'
+MAIN_EXPERIMENT_NAME = 'test'
 NUM_RUNS = 1
 OTHER_HPARAMS = { #Just the default params that may be different than the ones in the training file
     'hdc_agent' : False,
-    'alpha_scale' : .8,
-    'alpha_lr' : 3e-4,
-    'critic_lr' : 3e-4,
+    'alpha_scale' : .4,
+    'alpha_lr' : 5e-4,
+    'critic_lr' : 5e-4,
     'hypervec_dim' : 2048,
-    'policy_lr' : 3e-4,
-    'sample_size' : 256,
-    'tau' : .005,
+    'policy_lr' : 5e-4,
+    'sample_size' : 512,
+    'tau' : 1,
     'seed' : None,
     'explore_steps' : 10000,
-    'buffer_size' : 10 ** 6
+    'buffer_size' : 10 ** 6,
+    'learning_steps' : 4,
+    'target_update' : 8000,
+    'update_frequency' : 1
 }
 
 def train_hyper_param(name : str, values : list[float], seeds : list[int]):
@@ -40,4 +43,4 @@ def train_hyper_param(name : str, values : list[float], seeds : list[int]):
 
 
 if __name__ == '__main__':
-    train_hyper_param('alpha_scale', [.4, .45, .5, .55, .6, .65, .7, .75, .8], [0,1,2,3,4])
+    train_hyper_param('tau', [1], [0,1,2,3,4])
