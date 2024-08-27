@@ -13,7 +13,7 @@ Transition = namedtuple('Transition',
 
 
 class MemoryBuffer:
-    """A simple replay FIFO replay buffer"""
+    """A simple replay buffer"""
 
     def __init__(self, buffer_length : int, sample_size : int, random : random) -> None:
         self._memory = deque(maxlen=buffer_length)

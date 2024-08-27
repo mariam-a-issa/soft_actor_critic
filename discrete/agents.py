@@ -178,7 +178,7 @@ class Agent:
             for _ in range(self._learning_steps):
                 logging_info += self._update_func(buffer.sample())
                 
-            self.log_data(logging_info / self._learning_steps, steps)
+            self._log_data(logging_info / self._learning_steps, steps)
             
         if steps % self._target_update == 0:
             self._target_upate_func()
@@ -187,7 +187,7 @@ class Agent:
         """Will save the actor weights with the given extension"""
         self._save_actor_func(f'actor_weights{extension}.pt')
 
-    def log_data(self, logging_info : Tensor, steps : int) -> None:
+    def _log_data(self, logging_info : Tensor, steps : int) -> None:
         """Will log the training data"""
         #Critic
         self._summary_writer.add_scalar('QFunc1 Loss', logging_info[0], steps)

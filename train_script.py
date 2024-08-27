@@ -2,23 +2,25 @@ from copy import copy
 
 from train_loop import train
 
-MAIN_EXPERIMENT_NAME = 'test'
+MAIN_EXPERIMENT_NAME = 'nasim_alpha_hdc_large'
 NUM_RUNS = 1
 OTHER_HPARAMS = { #Just the default params that may be different than the ones in the training file
-    'hdc_agent' : False,
+    'hdc_agent' : True,
     'alpha_scale' : .4,
-    'alpha_lr' : 5e-4,
-    'critic_lr' : 5e-4,
+    'alpha_lr' : 3e-4,
+    'critic_lr' : 3e-4,
     'hypervec_dim' : 2048,
-    'policy_lr' : 5e-4,
-    'sample_size' : 512,
-    'tau' : 1,
+    'policy_lr' : 3e-4,
+    'sample_size' : 64,
+    'tau' : .003,
     'seed' : None,
-    'explore_steps' : 10000,
+    'explore_steps' : 0,
     'buffer_size' : 10 ** 6,
-    'learning_steps' : 4,
-    'target_update' : 8000,
-    'update_frequency' : 1
+    'learning_steps' : 1,
+    'target_update' : 1,
+    'update_frequency' : 1,
+    'environment_name' : 'nasim:MediumMultiSite-v0',
+    'max_steps' : 20000
 }
 
 def train_hyper_param(name : str, values : list[float], seeds : list[int]):
@@ -43,4 +45,4 @@ def train_hyper_param(name : str, values : list[float], seeds : list[int]):
 
 
 if __name__ == '__main__':
-    train_hyper_param('tau', [1], [0,1,2,3,4])
+    train_hyper_param('alpha_scale', [.1, .15, .2, .25, .3, .35, .4, .5, .6], [0,1,2,3,4])
