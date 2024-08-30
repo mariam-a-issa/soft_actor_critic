@@ -3,7 +3,6 @@ import csv
 from copy import deepcopy
 from pathlib import Path
 
-from torch.utils.tensorboard import SummaryWriter
 import torch
 from torch import Tensor
 import numpy as np
@@ -11,7 +10,7 @@ import numpy as np
 import gymnasium as gym
 
 from discrete import create_hdc_agent, create_nn_agent
-from utils.data_collection import MemoryBuffer, Transition
+from utils import MemoryBuffer, Transition, LearningLogger
 
 #Hyperparameters
 
@@ -36,9 +35,10 @@ LOG_DIR = './runs/large__alpha'
 MAX_STEPS = 6e5
 
 def train(
-        run_info : str = '', *,
-        log_dir : str = LOG_DIR,
-        experiment_name : str = '',
+        run_name : str = '',  #Multiple runs inside of a job (Usually for different seeds)
+        base_dir : str = LOG_DIR, #Root of all experiments
+        group_name : str = '', #Groups of various experiments
+        job_name : str = '',   #Individual jobs in the experiment
         hidden_size : int = HIDDEN_LAYER_SIZE,
         policy_lr : float = POLICY_LR,
         critic_lr : float = CRITIC_LR,
@@ -60,17 +60,19 @@ def train(
         learning_steps : int = LEARNING_STEPS) -> None:
     """Will be the main training loop"""
     
-    main_dir = Path(log_dir)
-    run_path = main_dir / experiment_name / run_info
+    main_dir = Path(base_dir)
+    run_path = main_dir / group_name / job_name / run_name
     
     h_params_dict = deepcopy(locals())
-    del h_params_dict['run_info']
-    del h_params_dict['log_dir']
+    del h_params_dict['run_name']
+    del h_params_dict['base_dir']
+    del h_params_dict['group_name']
+    del h_params_dict['job_name']
     _csv_of_hparams(run_path, h_params_dict)
 
     buffer = MemoryBuffer(buffer_size, sample_size, random)
 
-    writer = SummaryWriter(run_path) 
+    logger = LearningLogger(base_dir, group_name, job_name, run_name, h_params_dict)
     
     #"LunarLander-v2"
     #"CartPole-v1"
@@ -105,7 +107,6 @@ def train(
             alpha_scale,
             target_update,
             update_frequency,
-            writer,
             learning_steps,
             device_obj   
         )
@@ -122,16 +123,15 @@ def train(
             alpha_scale,
             target_update,
             update_frequency,
-            writer,
             learning_steps,
             device_obj
         )
 
     steps = 0
     num_games = 1
-    total_return = 0
-    previous_episodic_reward = 0
-    episodic_reward = 0
+    total_return = 0 #used to calculate average rewards
+    previous_episodic_reward = 0 #Used to log episodic reward throughout stps
+    episodic_reward = 0 #Keep track of current episodic reward
 
     def get_action(s : Tensor) -> Tensor:
         if explore_steps <= steps:
@@ -170,13 +170,13 @@ def train(
                 previous_episodic_reward = episodic_reward
                 episodic_reward = 0
             
-            writer.add_scalar('Average return', total_return / num_games, steps)
-            writer.add_scalar('Episodic rerurn', previous_episodic_reward, steps)
+            logger.log_scalars({'Average return' : total_return / num_games, 'Episodic_return' : previous_episodic_reward}, steps)
             state = next_state
 
     finally:
-        agent.save_actor(run_info)
+        agent.save_actor(job_name)
         env.close()
+        logger.close()
 
 def _csv_of_hparams(log_dir : Path, h_params_dict : dict):
     """Creates a csv at the log dir with the given hyperparameters"""

@@ -37,7 +37,7 @@ def train_hyper_param(name : str, values : list[float], seeds : list[int]):
             h_params['seed'] = seed
             
             try:
-                train(f'{name}({value})_seed({seed})', log_dir=f'runs/{MAIN_EXPERIMENT_NAME}', experiment_name = f'{name}_experiment', **h_params)
+                train(run_name = f'{name}({value})_seed({seed})', base_dir='runs', group_name = MAIN_EXPERIMENT_NAME, job_name = f'{name}_experiment', **h_params)
             except ValueError: 
                 f = open(f'runs/{MAIN_EXPERIMENT_NAME}/{name}_experiment/{name}({value})_seed({seed})/nan_v({value})_seed({seed}).txt', 'w', encoding='utf-8')
                 f.write('I have NaNed')
@@ -47,4 +47,4 @@ def train_hyper_param(name : str, values : list[float], seeds : list[int]):
 
 if __name__ == '__main__':
     os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8' #Needed since training will have to be deterministic. More info at https://docs.nvidia.com/cuda/cublas/index.html#cublasApi_reproducibility
-    train_hyper_param('alpha_scale', [.1], [0])
+    train_hyper_param('alpha_scale', [.1], [0, 1])

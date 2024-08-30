@@ -2,9 +2,8 @@ from typing import Callable
 
 from torch import Tensor
 import torch
-from torch.utils.tensorboard import SummaryWriter
 
-from utils.data_collection import MemoryBuffer, Transition
+from utils import MemoryBuffer, Transition, LearningLogger
 from . import nn, hdc
 
 
@@ -19,7 +18,6 @@ def create_nn_agent(input_size : int,
                  alpha_scale : float,
                  target_update : int, #When the target should update
                  update_frequency : int, #When the models should update,
-                 summary_writer : SummaryWriter,
                  learning_steps : int, #Amount of gradient steps
                  device : torch.device):
     """Will create SAC agent based on NNs"""
@@ -64,7 +62,6 @@ def create_nn_agent(input_size : int,
     return Agent(
         target_update,
         update_frequency,
-        summary_writer,
         learning_steps,
         update,
         call,
@@ -82,7 +79,6 @@ def create_hdc_agent(input_size : int,
                  alpha_scale : float,
                  target_update : int, #When the target should update
                  update_frequency : int, #When the models should update,
-                 summary_writer : SummaryWriter,
                  learning_steps : int, #Amount of gradient steps
                  device : torch.device):
     """Will create SAC agent based on HDC"""
@@ -133,7 +129,6 @@ def create_hdc_agent(input_size : int,
     return Agent(
         target_update,
         update_frequency,
-        summary_writer,
         learning_steps,
         update,
         call,
@@ -149,7 +144,6 @@ class Agent:
     def __init__(self,
                  target_update : int,
                  update_frequency : int,
-                 summary_writer : SummaryWriter,
                  learning_steps : int,
                  update_func : Callable[[Transition], Tensor],
                  action_func : Callable[[Tensor], Tensor],
@@ -157,7 +151,6 @@ class Agent:
                  save_actor_func : Callable[[str], None]):
         
         self._learning_steps = learning_steps
-        self._summary_writer = summary_writer
         self._update_frequency = update_frequency
         self._target_update = target_update
         
@@ -189,13 +182,17 @@ class Agent:
 
     def _log_data(self, logging_info : Tensor, steps : int) -> None:
         """Will log the training data"""
-        #Critic
-        self._summary_writer.add_scalar('QFunc1 Loss', logging_info[0], steps)
-        self._summary_writer.add_scalar('QFunc2 Loss', logging_info[1], steps)
         
-        #Alpha/Actor
-        self._summary_writer.add_scalar('Actor Loss', logging_info[2], steps)
-        self._summary_writer.add_scalar('Entropy', logging_info[3], steps)
-        self._summary_writer.add_scalar('Alpha Loss', logging_info[4], steps)
-        self._summary_writer.add_scalar('Alpha Value', logging_info[5], steps)
+        logger = LearningLogger()
+        
+        log_dict = {
+            'QFunc1 Loss' : logging_info[0].item(),
+            'QFunc2 Loss' : logging_info[1].item(),
+            'Actor Loss' : logging_info[2].item(),
+            'Entropy' : logging_info[3].item(),
+            'Alpha Loss' : logging_info[4].item(),
+            'Alpha Value' : logging_info[5].item()
+        }
+        
+        logger.log_scalars(log_dict, steps)
     
