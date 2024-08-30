@@ -237,6 +237,11 @@ class Actor(nn.Module):
 
         return action, log_prob, action_probs
     
+    def evaluate(self, state : Tensor) -> Tensor:
+        """Will return the best action for evaulation"""
+        
+        return torch.argmax(self._logits(state))
+    
     def update(self, trans : Transition, ce_state : Tensor) -> Tensor:
         """Using according to equation 12 as well as gradient based and return the actors loss, actors antropy, alpha loss, and the current alpha"""
         

@@ -11,6 +11,7 @@ import gymnasium as gym
 
 from discrete import create_hdc_agent, create_nn_agent
 from utils import MemoryBuffer, Transition, LearningLogger
+from .evaluate import evaluate
 
 #Hyperparameters
 
@@ -29,6 +30,8 @@ LEARNING_STEPS = 4
 EXPLORE_STEPS = 0
 BUFFER_SIZE = 10 ** 6
 SAMPLE_SIZE = 256
+EVAL_FREQUENCY = 15
+NUM_EVALS = 3
 
 LOG_DIR = './runs/large__alpha'
 
@@ -57,7 +60,9 @@ def train(
         environment_name : str = 'LunarLander-v2',
         seed : int = None,
         gpu : bool = True,
-        learning_steps : int = LEARNING_STEPS) -> None:
+        learning_steps : int = LEARNING_STEPS,
+        eval_frequency : int = EVAL_FREQUENCY,
+        num_evals : int = NUM_EVALS) -> None:
     """Will be the main training loop"""
     
     main_dir = Path(base_dir)
@@ -128,11 +133,8 @@ def train(
         )
 
     steps = 0
-    num_games = 1
-    total_return = 0 #used to calculate average rewards
-    previous_episodic_reward = 0 #Used to log episodic reward throughout stps
-    episodic_reward = 0 #Keep track of current episodic reward
-
+    num_epi = 0
+    
     def get_action(s : Tensor) -> Tensor:
         if explore_steps <= steps:
             return agent(s)
@@ -146,8 +148,6 @@ def train(
             action = get_action(state).unsqueeze(dim = 0)
             next_state, reward, terminated, truncated, _ = env.step(action.clone().detach().cpu().item())
             done = terminated or truncated
-            total_return += reward
-            episodic_reward += reward
             next_state = torch.tensor(next_state, device=device_obj, dtype=torch.float32)
             trans = Transition( #states will be np arrays, actions will be tensors, the reward will be a float, and terminated will be a bool
                 state,
@@ -166,11 +166,12 @@ def train(
 
             if done:
                 next_state = torch.tensor(env.reset()[0], device=device_obj, dtype=torch.float32)
-                num_games += 1
-                previous_episodic_reward = episodic_reward
-                episodic_reward = 0
-            
-            logger.log_scalars({'Average return' : total_return / num_games, 'Episodic_return' : previous_episodic_reward}, steps)
+                num_epi += 1
+                if num_epi % eval_frequency == 0:
+                    evaluate(env, agent, num_evals, num_epi)
+                    
+                
+                
             state = next_state
 
     finally:

@@ -1,9 +1,9 @@
 from copy import copy
 import os
 
-from train_loop import train
+from environment_run import train
 
-MAIN_EXPERIMENT_NAME = 'test'
+MAIN_EXPERIMENT_NAME = 'test_eval'
 NUM_RUNS = 1
 OTHER_HPARAMS = { #Just the default params that may be different than the ones in the training file
     'hdc_agent' : True,
@@ -21,7 +21,10 @@ OTHER_HPARAMS = { #Just the default params that may be different than the ones i
     'target_update' : 1,
     'update_frequency' : 1,
     'environment_name' : 'nasim:Tiny-v0',
-    'max_steps' : 20000
+    'max_steps' : 20000,
+    'eval_frequency' : 15,
+    'num_evals' : 5
+    
 }
 
 def train_hyper_param(name : str, values : list[float], seeds : list[int]):
@@ -47,4 +50,4 @@ def train_hyper_param(name : str, values : list[float], seeds : list[int]):
 
 if __name__ == '__main__':
     os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8' #Needed since training will have to be deterministic. More info at https://docs.nvidia.com/cuda/cublas/index.html#cublasApi_reproducibility
-    train_hyper_param('alpha_scale', [.1], [0, 1])
+    train_hyper_param('alpha_scale', [.1], [0])

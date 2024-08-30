@@ -25,30 +25,41 @@ class LearningLogger:
             self._loggers['tensorboard'] = None
                 
         if wand:
-            self._loggers['wandb'] = wandb.init(project='SAC in NASIM', name=group_name + '/' + job_name + '/' + run_name, config=hparams_config)
+            writer = wandb.init(project='SAC in NASIM', name=group_name + '/' + job_name + '/' + run_name, config=hparams_config)
+            self._loggers['wandb'] = writer
+            writer.define_metric('Episode')
+            writer.define_metric('Episodic Reward', step_metric='Episode')
+            
+            
         else:
             self._loggers['wandb'] = None
             
     def add_x_axis_metric_labels(self, metrics_labels : dict[str : list[str]]) -> None:
         """Will create labels for specific metrics that are different from the standard 'step'
         
-        metric_lables : Key is the added label the list of strs is all of metrics that will have the label
+        metric_lables : Key is the added label (step metric) the list of strs is all of metrics that will have the label (step metric)
         
         """
         
         for key, value in metrics_labels.items():
             wandb.define_metric(key)
             for metric in value:
-                wandb.define_metric(key, step_metric=metric)
+                wandb.define_metric(metric, step_metric=key)
             
-    def log_scalars(self, data : dict[str, int|float], steps : int) -> None:
+    def log_scalars(self, data : dict[str, int|float], *, steps : int=None, episodes : int=None) -> None:
         """Will log data about each key in the dict as a scalar with its own plot"""
+        
+        if (steps is None and episodes is None) or (steps is not None and episodes is not None):
+            raise TypeError("Needed to pass in steps or episodes. Cannot pass in steps and episodes")
         
         if self._loggers['tensorboard']:
             for key, value in data.items():
-                self._loggers['tensorboard'].add_scalar(key, value, steps)
+                reference = steps if steps is not None else episodes
+                self._loggers['tensorboard'].add_scalar(key, value, reference)
                 
         if self._loggers['wandb']:
+            if episodes is not None:
+                data['Episode'] = episodes
             self._loggers['wandb'].log(data, step=steps)
             
             

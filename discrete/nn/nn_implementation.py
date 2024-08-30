@@ -188,6 +188,11 @@ class Actor(BaseNN):
 
         return action, log_prob, action_probs
     
+    def evaluate(self, x : Tensor) -> Tensor:
+        """Will return the best action for evaulation"""
+        
+        return torch.argmax(super().forward(x))
+    
     def update(self, trans : Transition) -> Tensor:
         """Will update according to equation 12 and return the actors loss, actors entropy, alpha_loss, and the current alpha"""
 

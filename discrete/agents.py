@@ -43,6 +43,9 @@ def create_nn_agent(input_size : int,
         
     target_q.set_actual(q_function)
     
+    for obj in [target_q, alpha, actor, q_function]:
+        obj.to(device)
+    
     def update(trans : Transition) -> Tensor:
         """Will return tensor of the losses in a tensor of dim 6 in order of Qfunc1, Qfunc2, Actor Loss, Entropy, Alpha Loss, Alpha Value"""
         q_info = q_function.update(trans)
@@ -54,10 +57,10 @@ def create_nn_agent(input_size : int,
         with torch.no_grad():
             action, _, _ = actor(state)
             return action
-        
-    #Moves to device 
-    for obj in [target_q, alpha, actor, q_function]:
-        obj.to(device)
+    
+    def evaluate(state : Tensor) -> Tensor:
+        with torch.no_grad():
+            return actor.evaluate(state)
     
     return Agent(
         target_update,
@@ -66,7 +69,8 @@ def create_nn_agent(input_size : int,
         update,
         call,
         target_q.update,
-        actor.save
+        actor.save,
+        evaluate
     )
     
 def create_hdc_agent(input_size : int,
@@ -126,6 +130,11 @@ def create_hdc_agent(input_size : int,
             action, _, _ = actor(ae_state)
             return action
         
+    def evaluate(state : Tensor) -> Tensor:
+        with torch.no_grad():
+            ae_state = actor_encoder(state)
+            return actor.evaluate(ae_state)
+        
     return Agent(
         target_update,
         update_frequency,
@@ -133,7 +142,8 @@ def create_hdc_agent(input_size : int,
         update,
         call,
         target_q.update,
-        actor.save
+        actor.save,
+        evaluate
     )
         
     
@@ -148,7 +158,8 @@ class Agent:
                  update_func : Callable[[Transition], Tensor],
                  action_func : Callable[[Tensor], Tensor],
                  target_update_func : Callable[[], None],
-                 save_actor_func : Callable[[str], None]):
+                 save_actor_func : Callable[[str], None],
+                 evaluate_func : Callable[[Tensor], Tensor]):
         
         self._learning_steps = learning_steps
         self._update_frequency = update_frequency
@@ -158,9 +169,13 @@ class Agent:
         self._action_func = action_func
         self._target_upate_func = target_update_func
         self._save_actor_func = save_actor_func
+        self._evaluate_func = evaluate_func
         
     def __call__(self, state : Tensor) -> Tensor:
         return self._action_func(state)
+    
+    def evaluate(self, state : Tensor) -> Tensor:
+        return self._evaluate_func(state)
     
     def update(self, buffer : MemoryBuffer, steps : int) -> None:
         """Will perform the approaite update for the agent given the specific amount of steps"""
@@ -194,5 +209,5 @@ class Agent:
             'Alpha Value' : logging_info[5].item()
         }
         
-        logger.log_scalars(log_dict, steps)
+        logger.log_scalars(log_dict, steps=steps)
     
