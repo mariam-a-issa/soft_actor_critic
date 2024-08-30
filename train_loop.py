@@ -1,4 +1,3 @@
-from random import randint
 import random
 import csv
 from copy import deepcopy
@@ -7,6 +6,7 @@ from pathlib import Path
 from torch.utils.tensorboard import SummaryWriter
 import torch
 from torch import Tensor
+import numpy as np
 
 import gymnasium as gym
 
@@ -36,7 +36,7 @@ LOG_DIR = './runs/large__alpha'
 MAX_STEPS = 6e5
 
 def train(
-        extra_info : str = '', *,
+        run_info : str = '', *,
         log_dir : str = LOG_DIR,
         hidden_size : int = HIDDEN_LAYER_SIZE,
         policy_lr : float = POLICY_LR,
@@ -60,26 +60,24 @@ def train(
     """Will be the main training loop"""
 
     h_params_dict = deepcopy(locals())
-    del h_params_dict['extra_info']
+    del h_params_dict['run_info']
     del h_params_dict['log_dir']
-    _csv_of_hparams(log_dir + '/' + extra_info, h_params_dict)
+    _csv_of_hparams(log_dir + '/' + run_info, h_params_dict)
 
     buffer = MemoryBuffer(buffer_size, sample_size, random)
 
-    writer = SummaryWriter(log_dir + '/' + extra_info)
+    writer = SummaryWriter(log_dir + '/' + run_info)
     
     #"LunarLander-v2"
     #"CartPole-v1"
     #"MountainCar-v0"
     env = gym.make(environment_name)
     
-    seed_dict = dict() #A hack to passing in random seeds or not
-    
     if seed is not None:
         torch.manual_seed(seed) 
-        torch.use_deterministic_algorithms(True, warn_only=True)
-        seed_dict['seed'] = seed
+        torch.use_deterministic_algorithms(True)
         random.seed(seed)
+        np.random.seed(seed)
 
     if torch.cuda.is_available() and gpu:
         device = f'cuda:{torch.cuda.current_device()}'
@@ -105,7 +103,7 @@ def train(
             update_frequency,
             writer,
             learning_steps,
-            device_obj,   
+            device_obj   
         )
     else:
         agent = create_nn_agent(
@@ -135,9 +133,9 @@ def train(
         if explore_steps <= steps:
             return agent(s)
         else:
-            return torch.tensor(randint(0, env.action_space.n-1))
+            return torch.tensor(random.randint(0, env.action_space.n-1))
         
-    state = torch.tensor(env.reset(**seed_dict)[0], device=device_obj, dtype=torch.float32)
+    state = torch.tensor(env.reset(seed=seed)[0], device=device_obj, dtype=torch.float32)
 
     try:
         while max_steps > steps:
@@ -147,7 +145,7 @@ def train(
             total_return += reward
             episodic_reward += reward
             next_state = torch.tensor(next_state, device=device_obj, dtype=torch.float32)
-            trans = Transition( #states will be np arrays, actions will be tensors, the reward will be a float, and done will be a bool
+            trans = Transition( #states will be np arrays, actions will be tensors, the reward will be a float, and terminated will be a bool
                 state,
                 action,
                 next_state,
@@ -163,7 +161,7 @@ def train(
             steps += 1
 
             if done:
-                next_state = torch.tensor(env.reset(**seed_dict)[0], device=device_obj, dtype=torch.float32)
+                next_state = torch.tensor(env.reset()[0], device=device_obj, dtype=torch.float32)
                 num_games += 1
                 previous_episodic_reward = episodic_reward
                 episodic_reward = 0
@@ -173,7 +171,7 @@ def train(
             state = next_state
 
     finally:
-        agent.save_actor(extra_info)
+        agent.save_actor(run_info)
         env.close()
 
 def _csv_of_hparams(log_dir : str, h_params_dict : dict):

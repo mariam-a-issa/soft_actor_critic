@@ -209,9 +209,10 @@ class Actor(BaseNN):
 
         alpha_loss, alpha = self._alpha.update(log_probs, action_probs, batch_size) #Do the update in the actor in order to not recaluate probs
 
-        ent = -torch.bmm(action_probs.view(batch_size, 1, self._action_s), log_probs.view(batch_size, self._action_s, 1)).mean()
-        
-        return torch.stack((loss, ent, alpha_loss, alpha))
+        with torch.no_grad():
+            ent = -torch.bmm(action_probs.view(batch_size, 1, self._action_s), log_probs.view(batch_size, self._action_s, 1)).mean()
+            
+            return torch.stack((loss, ent, alpha_loss, alpha))
         
     def set_actual(self, q_func : QFunction) -> None:
         """Will actually set the q_func if it was not set in the constructor"""
