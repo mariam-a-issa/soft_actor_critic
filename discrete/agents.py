@@ -4,7 +4,7 @@ from torch import Tensor
 import torch
 from torch.utils.tensorboard import SummaryWriter
 
-from data_collection import MemoryBuffer, Transition
+from utils.data_collection import MemoryBuffer, Transition
 from . import nn, hdc
 
 

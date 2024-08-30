@@ -11,7 +11,7 @@ import numpy as np
 import gymnasium as gym
 
 from discrete import create_hdc_agent, create_nn_agent
-from data_collection import MemoryBuffer, Transition
+from utils.data_collection import MemoryBuffer, Transition
 
 #Hyperparameters
 
@@ -38,6 +38,7 @@ MAX_STEPS = 6e5
 def train(
         run_info : str = '', *,
         log_dir : str = LOG_DIR,
+        experiment_name : str = '',
         hidden_size : int = HIDDEN_LAYER_SIZE,
         policy_lr : float = POLICY_LR,
         critic_lr : float = CRITIC_LR,
@@ -58,15 +59,18 @@ def train(
         gpu : bool = True,
         learning_steps : int = LEARNING_STEPS) -> None:
     """Will be the main training loop"""
-
+    
+    main_dir = Path(log_dir)
+    run_path = main_dir / experiment_name / run_info
+    
     h_params_dict = deepcopy(locals())
     del h_params_dict['run_info']
     del h_params_dict['log_dir']
-    _csv_of_hparams(log_dir + '/' + run_info, h_params_dict)
+    _csv_of_hparams(run_path, h_params_dict)
 
     buffer = MemoryBuffer(buffer_size, sample_size, random)
 
-    writer = SummaryWriter(log_dir + '/' + run_info)
+    writer = SummaryWriter(run_path) 
     
     #"LunarLander-v2"
     #"CartPole-v1"
@@ -174,10 +178,10 @@ def train(
         agent.save_actor(run_info)
         env.close()
 
-def _csv_of_hparams(log_dir : str, h_params_dict : dict):
+def _csv_of_hparams(log_dir : Path, h_params_dict : dict):
     """Creates a csv at the log dir with the given hyperparameters"""
 
-    file = Path(f'{log_dir}/hparams.csv')
+    file = log_dir / 'hparams.csv'
     file.parent.mkdir(parents=True, exist_ok=True)
 
     with open(file, 'w+') as csv_file:

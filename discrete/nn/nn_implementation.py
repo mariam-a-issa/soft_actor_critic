@@ -7,7 +7,7 @@ from torch.nn import functional as F
 from torch.nn.utils import clip_grad_norm_
 
 from .base_nn import BaseNN
-from data_collection import Transition
+from utils.data_collection import Transition
 
 #Parameter update implementation from https://arxiv.org/abs/1910.07207
 

@@ -10,7 +10,7 @@ from torch.distributions import Categorical
 import torch.nn.functional as F 
 
 from .encoders import RBFEncoder, EXPEncoder
-from data_collection import Transition
+from utils.data_collection import Transition
 
 _EPS = 1e-4
 
