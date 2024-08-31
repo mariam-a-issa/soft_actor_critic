@@ -21,9 +21,10 @@ HYPER_VEC_DIM = 2048
 POLICY_LR = LR
 CRITIC_LR = LR
 ALPHA_LR = LR
+AUTOTUNE = True
 DISCOUNT = .99
 TAU = .005
-ALPHA_SCALE = .75 #Kinda for the lunar lander
+ALPHA_VALUE = .75 #Kinda for the lunar lander
 TARGET_UPDATE = 1 
 UPDATE_FREQUENCY = 1 
 LEARNING_STEPS = 4
@@ -48,7 +49,8 @@ def train(
         alpha_lr : float = ALPHA_LR,
         discount : float = DISCOUNT,
         tau : float = TAU,
-        alpha_scale :float = ALPHA_SCALE,
+        alpha_value :float = ALPHA_VALUE,
+        autotune : bool = AUTOTUNE,#Can either be target scaling or actual temperature coefficient
         target_update : int = TARGET_UPDATE,
         update_frequency : int = UPDATE_FREQUENCY,
         explore_steps : int = EXPLORE_STEPS ,
@@ -109,7 +111,8 @@ def train(
             critic_lr,
             discount,
             tau,
-            alpha_scale,
+            alpha_value,
+            autotune,
             target_update,
             update_frequency,
             learning_steps,
@@ -125,7 +128,8 @@ def train(
             alpha_lr,
             discount,
             tau,
-            alpha_scale,
+            alpha_value,
+            autotune,
             target_update,
             update_frequency,
             learning_steps,

@@ -129,13 +129,17 @@ class Alpha:
 
     def __init__(self, 
                 action_space_size : int,
-                scale : float,
-                lr : float) -> None:
+                value : float, #Either the scaling coefficient or the actual alpha value
+                lr : float,
+                autotune : bool = True) -> None:
         
-        self._target_ent = -scale * torch.log(1 / torch.tensor(action_space_size))
+        self._target_ent = -value * torch.log(1 / torch.tensor(action_space_size))
         self._log_alpha = torch.zeros(1, requires_grad=True)
         self._optim = optim.Adam([self._log_alpha], lr = lr, eps=_EPS)
         self._action_s = action_space_size
+        
+        self._value = torch.tensor(value)
+        self._autotune = autotune
 
     def to(self, device) -> None:
         """Will move the alpha to the device"""
@@ -144,10 +148,16 @@ class Alpha:
 
     def __call__(self) -> Tensor:
         """Will give the current alpha"""
+        if not self._autotune:
+            return self._value
         return self._log_alpha.exp()
     
     def update(self, log_probs : Tensor, action_probs : Tensor, batch_size : int) -> tuple[Tensor, Tensor]:
         """Will update according to equation 11"""
+        
+        if not self._autotune:
+            return torch.stack((torch.tensor(0), self._value))
+        
         #Batch wise dot prodcut then mean
         loss = torch.bmm(action_probs.detach().view(batch_size, 1, self._action_s), 
                          (-self._log_alpha.exp() * (log_probs + self._target_ent).detach()).view(batch_size, self._action_s, 1)).mean()

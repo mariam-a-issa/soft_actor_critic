@@ -15,7 +15,8 @@ def create_nn_agent(input_size : int,
                  alpha_lr : float,
                  discount : float,
                  tau : float,
-                 alpha_scale : float,
+                 alpha_value : float,
+                 autotune : bool,
                  target_update : int, #When the target should update
                  update_frequency : int, #When the models should update,
                  learning_steps : int, #Amount of gradient steps
@@ -23,7 +24,7 @@ def create_nn_agent(input_size : int,
     """Will create SAC agent based on NNs"""
     
     target_q = nn.QFunctionTarget(None, tau)
-    alpha = nn.Alpha(output_size, alpha_scale, alpha_lr)
+    alpha = nn.Alpha(output_size, alpha_value, alpha_lr, autotune=autotune)
 
     actor = nn.Actor(input_size, 
                             output_size, 
@@ -80,7 +81,8 @@ def create_hdc_agent(input_size : int,
                  critic_lr : float,
                  discount : float,
                  tau : float,
-                 alpha_scale : float,
+                 alpha_value : float,
+                 autotune : bool,
                  target_update : int, #When the target should update
                  update_frequency : int, #When the models should update,
                  learning_steps : int, #Amount of gradient steps
@@ -91,7 +93,7 @@ def create_hdc_agent(input_size : int,
     critic_encoder = hdc.EXPEncoder(input_size, hyper_dim)
 
     target_q = hdc.TargetQFunction(tau, None)
-    alpha = hdc.Alpha(output_size, alpha_scale, critic_lr)
+    alpha = hdc.Alpha(output_size, alpha_value, critic_lr, autotune=autotune)
 
     actor = hdc.Actor(hyper_dim,
                         output_size,
