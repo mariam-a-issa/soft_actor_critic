@@ -12,6 +12,7 @@ from .encoders import RBFEncoder, EXPEncoder
 from utils.data_collection import Transition
 
 _EPS = 1e-4
+MAX_ROWS = 50 #Same variable in encoders
 
 #Copied from nn implementation could there be another way to do this?
 class Alpha:
@@ -101,9 +102,13 @@ class QFunction:
                  target : 'TargetQFunction',
                  alpha : Alpha,
                  lr : float,
-                 discount : float) -> None:
+                 discount : float,
+                 dynamic : bool) -> None:
         """Will create a Q function that has two q models"""
 
+        if dynamic:
+            action_dim *= MAX_ROWS
+        
         self._q1 = QModel(hvec_dim, action_dim)
         self._q2 = QModel(hvec_dim, action_dim)
 
@@ -122,7 +127,7 @@ class QFunction:
         return torch.min(self._q1(state), self._q2(state))
     
     def update(self, trans : Transition) -> tuple[Tensor, Tensor]:
-        """Use equation 10 to find loss and then bind loss
+        """Use equation 10 to find loss and then bundle loss
            Return the ce_state in order to not recalculate it and the loss"""
         
         batch_size = len(trans.state)
@@ -133,8 +138,8 @@ class QFunction:
             ce_next_state = self._c_encoder(trans.next_state)
             ce_state = self._c_encoder(trans.state)
 
-            next_action_probs : Tensor
-            _, next_log_pi, next_action_probs = self._actor(ae_next_state)
+            next_action_probs : Tensor #The actor will take care of setting the probabilites to zero for us
+            _, next_log_pi, next_action_probs = self._actor(ae_next_state, trans.num_devices_n, batch_size)
             q_log_dif : Tensor = self._target(ce_next_state) - self._alpha() * next_log_pi
 
  
@@ -149,6 +154,7 @@ class QFunction:
 
             #The action will be b x 1 where each element corresponds to index of action
             #By doing gather, make q_a with shape b x 1 where the element is the q value for the performed action
+            #There should be no need to mask actions over here because actor set probabilites to zero and the batch should not have any illegal actions
             
             q1_a = q1.gather(1, trans.action)
             q2_a = q2.gather(1, trans.action)
@@ -218,9 +224,15 @@ class Actor(nn.Module):
                  lr : int, 
                  actor_encoder : RBFEncoder,
                  alpha : Alpha, 
-                 target_q : TargetQFunction) -> None:
+                 target_q : TargetQFunction,
+                 dynamic : bool) -> None:
         super().__init__()
-
+        
+        self._action_s = action_dim
+        
+        if dynamic:
+            action_dim *= MAX_ROWS
+        
         self._a_encoder = actor_encoder
         
         self._logits = nn.Linear(hvec_dim, action_dim, bias=False)
@@ -230,14 +242,23 @@ class Actor(nn.Module):
         self._alpha = alpha
 
         self._optim = optim.Adam(self.parameters(), lr=lr, eps = _EPS)
+        
+        self._mask = dynamic
 
-        self._action_s = action_dim
+    def forward(self, state : Tensor, num_devices : Tensor = None, batch_size : int = None) -> tuple[Tensor]:
+        """Will give the action, log_prob, action_probs of action
+           If padding was done, then in the batch there would be states with various lengths which will need to be taken account of when doing"""
 
-    def forward(self, state : Tensor) -> tuple[Tensor]:
-        """Will give the action, log_prob, action_probs of action"""
-
-        #Same as the nn_implementation
-        logits = self._logits(state)
+        logits : Tensor = self._logits(state)
+        
+        if num_devices is not None:
+            batch_size = state.shape[0] if batch_size is None else batch_size
+            # Create an index tensor for each row, broadcast to match the size of matrix         # [1, 2, 3, ... i]
+            row_indices = torch.arange(logits.size(0)).unsqueeze(0).expand(batch_size, -1)   # [1, 2, 3  ... i]
+            # Use broadcasting to create a boolean mask                                          # ^  
+            num_devices *= self._action_s                                                        # |
+            mask = row_indices < num_devices.unsqueeze(1)                                        # |_ Then create a mask of same dimensions as this matrix where True at indicies are less than action size per device times device 
+            logits = logits.masked_fill(~mask, float('-inf'))
         dist = Categorical(logits=logits)
         action = dist.sample()
         action_probs = dist.probs
@@ -261,7 +282,7 @@ class Actor(nn.Module):
         q_v = self._target(ce_state)
 
         action_probs : Tensor; log_probs : Tensor; difference : Tensor ; loss : Tensor
-        _, log_probs, action_probs = self(ae_state)
+        _, log_probs, action_probs = self(ae_state, trans.num_devices, batch_size)
         
         difference = self._alpha() * log_probs - q_v
 

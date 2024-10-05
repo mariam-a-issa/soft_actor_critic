@@ -1,16 +1,16 @@
 from torch.utils.tensorboard import SummaryWriter
 from pathlib import Path
-import wandb
+import wandb as wb
 
 class LearningLogger:
     """Creates a logging class to handle specific types of logging for data about the perforamnce of the model"""
     _instance = None
     
-    def __new__(cls, base_dir : str = None, group_name : str = None, job_name : str = None, run_name : str = None, hparams_config : dict = None, tensorboard : bool = True, wand : bool = True):
+    def __new__(cls, base_dir : str = None, group_name : str = None, job_name : str = None, run_name : str = None, hparams_config : dict = None, tensorboard : bool = True, wandb : bool = True):
         """Allows logger to follow singleton design"""
         if cls._instance is None or base_dir is not None or group_name is not None or job_name is not None or run_name is not None: #Build new instance when no new one exists or when the logging data is being changed
             cls._instance = super(LearningLogger, cls).__new__(cls)
-            cls._instance._initialize(base_dir, group_name, job_name, run_name, hparams_config, tensorboard, wand)
+            cls._instance._initialize(base_dir, group_name, job_name, run_name, hparams_config, tensorboard, wandb)
         return cls._instance
     
     def _initialize(self, base_dir : str, group_name : str, job_name : str, run_name : str, hparams_config : dict, tensorboard : bool = True, wand : bool = True):
@@ -25,12 +25,10 @@ class LearningLogger:
             self._loggers['tensorboard'] = None
                 
         if wand:
-            writer = wandb.init(project='SAC in NASIM', name=group_name + '/' + job_name + '/' + run_name, config=hparams_config)
+            writer = wb.init(project='SAC in NASIM', name=group_name + '/' + job_name + '/' + run_name, config=hparams_config)
             self._loggers['wandb'] = writer
             writer.define_metric('Episode')
             writer.define_metric('Episodic Reward', step_metric='Episode')
-            
-            
         else:
             self._loggers['wandb'] = None
             
@@ -42,9 +40,9 @@ class LearningLogger:
         """
         
         for key, value in metrics_labels.items():
-            wandb.define_metric(key)
+            wb.define_metric(key)
             for metric in value:
-                wandb.define_metric(metric, step_metric=key)
+                wb.define_metric(metric, step_metric=key)
             
     def log_scalars(self, data : dict[str, int|float], *, steps : int=None, episodes : int=None) -> None:
         """Will log data about each key in the dict as a scalar with its own plot"""

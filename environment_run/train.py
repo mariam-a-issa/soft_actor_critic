@@ -6,8 +6,11 @@ from pathlib import Path
 import torch
 from torch import Tensor
 import numpy as np
+from nasimemu import env_utils
+from numpy.typing import NDArray
 
-import gymnasium as gym
+#import gymnasium
+import gym
 
 from discrete import create_hdc_agent, create_nn_agent
 from utils import MemoryBuffer, Transition, LearningLogger
@@ -59,12 +62,15 @@ def train(
         max_steps : int = MAX_STEPS,
         hdc_agent : bool = False,
         hypervec_dim : int = HYPER_VEC_DIM,
-        environment_name : str = 'LunarLander-v2',
+        environment_info : dict = {'id' : 'LunarLander-v2'}, #Currently using gym as nasimemu uses gym
         seed : int = None,
         gpu : bool = True,
         learning_steps : int = LEARNING_STEPS,
         eval_frequency : int = EVAL_FREQUENCY,
-        num_evals : int = NUM_EVALS) -> None:
+        num_evals : int = NUM_EVALS,
+        tensorboard : bool = True,
+        wandb : bool = True,
+        dynamic : bool = False) -> None:
     """Will be the main training loop"""
     
     main_dir = Path(base_dir)
@@ -75,16 +81,33 @@ def train(
     del h_params_dict['base_dir']
     del h_params_dict['group_name']
     del h_params_dict['job_name']
+    del h_params_dict['environment_info']
+    
+    for key, value in environment_info.items():
+        h_params_dict[key] = value
+        
     _csv_of_hparams(run_path, h_params_dict)
 
-    buffer = MemoryBuffer(buffer_size, sample_size, random)
+    buffer = MemoryBuffer(buffer_size, sample_size, random, dynamic)
 
-    logger = LearningLogger(base_dir, group_name, job_name, run_name, h_params_dict)
+    logger = LearningLogger(base_dir, group_name, job_name, run_name, h_params_dict, tensorboard=tensorboard, wandb=wandb)
     
     #"LunarLander-v2"
     #"CartPole-v1"
     #"MountainCar-v0"
-    env = gym.make(environment_name)
+    env = gym.make(**environment_info)
+    env.reset()
+    
+    if environment_info['id'] == 'NASimEmu-v0':
+        #Got from their config file on how to get sorta of an idea of the size of state and action spaces
+        action_space = len(env.action_list)
+        s = env.reset()
+        state_space = s.shape[1]
+        dynamic = True
+    else:
+        action_space = env.action_space.n
+        state_space = env.observation_space.shape[0]
+        dynamic = False
     
     if seed is not None:
         torch.manual_seed(seed) 
@@ -104,8 +127,8 @@ def train(
     
     if hdc_agent:
         agent = create_hdc_agent(
-            env.observation_space.shape[0],
-            env.action_space.n,
+            state_space,
+            action_space,
             hypervec_dim,
             policy_lr,
             critic_lr,
@@ -116,12 +139,13 @@ def train(
             target_update,
             update_frequency,
             learning_steps,
-            device_obj   
+            device_obj,
+            dynamic  
         )
     else:
         agent = create_nn_agent(
-            env.observation_space.shape[0],
-            env.action_space.n,
+            state_space,
+            action_space,
             hidden_size,
             policy_lr,
             critic_lr,
@@ -133,25 +157,31 @@ def train(
             target_update,
             update_frequency,
             learning_steps,
-            device_obj
+            device_obj,
+            dynamic
         )
 
     steps = 0
     num_epi = 0
     
-    def get_action(s : Tensor) -> Tensor:
+    def get_action(s : Tensor) -> tuple[tuple[int, int], int]:
         if explore_steps <= steps:
-            return agent(s)
+            return _convert_int_action(agent(s).data, env, s)
         else:
-            return torch.tensor(random.randint(0, env.action_space.n-1))
+            return _convert_int_action(random.randint(0, env.action_space.n-1), env ,s)
         
-    state = torch.tensor(env.reset(seed=seed)[0], device=device_obj, dtype=torch.float32)
+    def clean_state(s : NDArray) -> NDArray:
+        """Will clean up the state and return it.
+           Many of the NASimEmu agents do not use the additonal information row (data about whether an action was successful)"""
+        return s[:-1]
+    
+    state = torch.tensor(clean_state(env.reset()), device=device_obj, dtype=torch.float32)
 
     try:
         while max_steps > steps:
-            action = get_action(state).unsqueeze(dim = 0)
-            next_state, reward, terminated, truncated, _ = env.step(action.clone().detach().cpu().item())
-            done = terminated or truncated
+            action = get_action(state)
+            next_state, reward, terminated, _ = env.step(action)
+            done = terminated
             next_state = torch.tensor(next_state, device=device_obj, dtype=torch.float32)
             trans = Transition( #states will be np arrays, actions will be tensors, the reward will be a float, and terminated will be a bool
                 state,
@@ -170,12 +200,11 @@ def train(
 
             if done:
                 next_state = torch.tensor(env.reset()[0], device=device_obj, dtype=torch.float32)
-                num_epi += 1
-                if num_epi % eval_frequency == 0:
-                    evaluate(env, agent, num_evals, num_epi)
-                    
-                
-                
+                if explore_steps <= steps:
+                    num_epi += 1
+                    if num_epi % eval_frequency == 0:
+                        evaluate(env, agent, num_evals, num_epi)
+
             state = next_state
 
     finally:
@@ -194,6 +223,13 @@ def _csv_of_hparams(log_dir : Path, h_params_dict : dict):
         for key, value in h_params_dict.items():
             writer.writerow([key, value])
         #writer.writerow(['clip_critic', True])
+
+def _convert_int_action(action : int, env, s : Tensor) -> tuple[tuple[int, int], int]:
+    """Will convert an integer from policy into tuple containing device and action to do at device"""
+    aux_row = np.zeros((1, s.shape[1])) #Needed since possible actions assumes that there is the auxillary data that was cut out earlier
+    np_s = s.cpu().numpy()
+    np_s = np.concatenate((np_s, aux_row), axis=0)
+    return env_utils.get_possible_actions(env, np_s)[action]
 
 if __name__ == '__main__':
     for i in range(3):

@@ -1,6 +1,6 @@
 from typing import Callable
 
-from torch import Tensor
+from torch import Tensor, tensor
 import torch
 
 from utils import MemoryBuffer, Transition, LearningLogger
@@ -20,7 +20,8 @@ def create_nn_agent(input_size : int,
                  target_update : int, #When the target should update
                  update_frequency : int, #When the models should update,
                  learning_steps : int, #Amount of gradient steps
-                 device : torch.device):
+                 device : torch.device,
+                 dynamic : bool):
     """Will create SAC agent based on NNs"""
     
     target_q = nn.QFunctionTarget(None, tau)
@@ -86,11 +87,12 @@ def create_hdc_agent(input_size : int,
                  target_update : int, #When the target should update
                  update_frequency : int, #When the models should update,
                  learning_steps : int, #Amount of gradient steps
-                 device : torch.device):
+                 device : torch.device,
+                 dynamic : bool):
     """Will create SAC agent based on HDC"""
     
-    actor_encoder = hdc.RBFEncoder(input_size, hyper_dim)
-    critic_encoder = hdc.EXPEncoder(input_size, hyper_dim)
+    actor_encoder = hdc.RBFEncoder(input_size, hyper_dim, dynamic)
+    critic_encoder = hdc.EXPEncoder(input_size, hyper_dim, dynamic)
 
     target_q = hdc.TargetQFunction(tau, None)
     alpha = hdc.Alpha(output_size, alpha_value, critic_lr, autotune=autotune)
@@ -100,7 +102,8 @@ def create_hdc_agent(input_size : int,
                         policy_lr,
                         actor_encoder,
                         alpha,
-                        target_q)
+                        target_q,
+                        dynamic)
     
     q_function = hdc.QFunction(hyper_dim,
                                     output_size,
@@ -110,7 +113,8 @@ def create_hdc_agent(input_size : int,
                                     target_q,
                                     alpha,
                                     critic_lr,
-                                    discount)
+                                    discount,
+                                    dynamic)
     
     target_q.set_actual(q_function)
     
@@ -120,6 +124,7 @@ def create_hdc_agent(input_size : int,
     def update(trans : Transition) -> Tensor:
         """Will update following SAC equations for HDC and return losses in the form of a six dimension tensor in the form
         Qfunc1, Qfunc2, Actor Loss, Entropy, Alpha Loss, Alpha Value"""
+        
         ce_state, q_info = q_function.update(trans)
         actor_info = actor.update(trans, ce_state)
         return torch.cat((q_info, actor_info))
@@ -128,8 +133,8 @@ def create_hdc_agent(input_size : int,
     def call(state : Tensor) -> Tensor:
         """Will use HDC actor to determine action that should be taken at the given state"""
         with torch.no_grad():
-            ae_state = actor_encoder(state)
-            action, _, _ = actor(ae_state)
+            ae_state = actor_encoder(state.squeeze())
+            action, _, _ = actor(ae_state, num_devices = tensor(state.shape[0]).unsqueeze(dim=0), batch_size = 1)
             return action
         
     def evaluate(state : Tensor) -> Tensor:
