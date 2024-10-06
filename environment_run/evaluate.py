@@ -4,6 +4,7 @@ import torch
 
 from discrete import Agent
 from utils import LearningLogger
+from .helpers import convert_int_action, clean_state
 
 def evaluate(env : gym.Env, agent : Agent, num_eval, cur_epi) -> None:
     """Will evaluate the current agent on the environment for a given amount of episodes and then log the results"""
@@ -13,12 +14,11 @@ def evaluate(env : gym.Env, agent : Agent, num_eval, cur_epi) -> None:
     for _ in range(num_eval):
         
         done = False
-        state = env.reset()[0]
+        state = env.reset()
         
         while not done:
-            action = agent.evaluate(torch.from_numpy(state).to(torch.get_default_device()))
-            next_state, reward, terminated, truncated, _ = env.step(action.cpu().item())
-            done = terminated or truncated
+            action = agent.evaluate(torch.tensor(clean_state(state)))
+            next_state, reward, done, _ = env.step(convert_int_action(action.data, env, state))
             epi_reward += reward
             state = next_state
             

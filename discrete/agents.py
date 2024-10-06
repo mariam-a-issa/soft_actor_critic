@@ -139,7 +139,7 @@ def create_hdc_agent(input_size : int,
         
     def evaluate(state : Tensor) -> Tensor:
         with torch.no_grad():
-            ae_state = actor_encoder(state)
+            ae_state = actor_encoder(state.flatten())
             return actor.evaluate(ae_state)
         
     return Agent(

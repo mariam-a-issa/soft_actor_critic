@@ -3,7 +3,7 @@ from math import pi
 import torch
 from torch import Tensor, device
 
-MAX_ROWS = 50 #Maximum amount of rows of same vector length. (Basically can handle 50 devices). Same variable in hdc_implementation
+_MAX_ROWS = 50 #Maximum amount of rows of same vector length. (Basically can handle 50 devices). Same variable in hdc_implementation
 
 class EXPEncoder:
     """Represents the exponential encoder from the hdpg_actor_critic code but changed to only use a tensors from pytorch"""
@@ -11,7 +11,7 @@ class EXPEncoder:
         """Will create an encoder that will work for vectors that have d dimensionality"""
         
         if dynamic:
-            input_size = input_size * MAX_ROWS
+            input_size = input_size * _MAX_ROWS
         
         self._s_hdvec = torch.randn(input_size, hyper_dim, dtype=torch.float32) 
         self._bias = 2 * pi * torch.rand(hyper_dim, dtype=torch.float32)
@@ -38,7 +38,7 @@ class RBFEncoder:
     def __init__(self, input_size : int, hyper_dim : int, dynamic : bool):
         
         if dynamic:
-            input_size = input_size * MAX_ROWS
+            input_size = input_size * _MAX_ROWS
 
         self._s_hdvec = torch.randn(input_size, hyper_dim, dtype=torch.float32) 
         self._bias = 2 * pi * torch.rand(hyper_dim, dtype=torch.float32)
@@ -70,7 +70,7 @@ def _pad(state : Tensor | list[Tensor], input_size : int) -> Tensor:
         return padded_state
     elif isinstance(state, list):
         padded_state = torch.zeros(input_size) #Need to pad first one to desired length
-        padded_state[len(state[0]):] = state[0]
+        padded_state[:len(state[0])] = state[0]
         state[0] = padded_state
         return torch.nn.utils.rnn.pad_sequence(state, batch_first=True, padding_value=0)
     else:

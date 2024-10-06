@@ -12,7 +12,8 @@ from .encoders import RBFEncoder, EXPEncoder
 from utils.data_collection import Transition
 
 _EPS = 1e-4
-MAX_ROWS = 50 #Same variable in encoders
+_NEG_INF = -40 #For when we are masking
+_MAX_ROWS = 50 #Same variable in encoders
 
 #Copied from nn implementation could there be another way to do this?
 class Alpha:
@@ -107,7 +108,7 @@ class QFunction:
         """Will create a Q function that has two q models"""
 
         if dynamic:
-            action_dim *= MAX_ROWS
+            action_dim *= _MAX_ROWS
         
         self._q1 = QModel(hvec_dim, action_dim)
         self._q2 = QModel(hvec_dim, action_dim)
@@ -120,7 +121,7 @@ class QFunction:
         self._lr = lr
         self._discount = discount
         self._alpha = alpha
-        self._action_s = action_dim
+        self._output_dim = action_dim
 
     def __call__(self, state) -> Tensor:
         """State should be an encoded h_vect"""
@@ -144,8 +145,8 @@ class QFunction:
 
  
             #Essentially batch dot product
-            next_v = torch.bmm(next_action_probs.view(batch_size, 1, self._action_s), 
-                               q_log_dif.view(batch_size, self._action_s, 1)).view(batch_size, 1)
+            next_v = torch.bmm(next_action_probs.view(batch_size, 1, self._output_dim), 
+                               q_log_dif.view(batch_size, self._output_dim, 1)).view(batch_size, 1)
 
             next_q = trans.reward + (1 - trans.done) * self._discount * next_v
 
@@ -228,10 +229,10 @@ class Actor(nn.Module):
                  dynamic : bool) -> None:
         super().__init__()
         
-        self._action_s = action_dim
+        self._action_s = action_dim #Amount of actions per device
         
         if dynamic:
-            action_dim *= MAX_ROWS
+            action_dim *= _MAX_ROWS
         
         self._a_encoder = actor_encoder
         
@@ -244,6 +245,8 @@ class Actor(nn.Module):
         self._optim = optim.Adam(self.parameters(), lr=lr, eps = _EPS)
         
         self._mask = dynamic
+        
+        self._ouput_dim = action_dim #Amount of total actions for the environment
 
     def forward(self, state : Tensor, num_devices : Tensor = None, batch_size : int = None) -> tuple[Tensor]:
         """Will give the action, log_prob, action_probs of action
@@ -251,25 +254,29 @@ class Actor(nn.Module):
 
         logits : Tensor = self._logits(state)
         
-        if num_devices is not None:
+        if num_devices is not None: #Basically when we need to pad
             batch_size = state.shape[0] if batch_size is None else batch_size
-            # Create an index tensor for each row, broadcast to match the size of matrix         # [1, 2, 3, ... i]
-            row_indices = torch.arange(logits.size(0)).unsqueeze(0).expand(batch_size, -1)   # [1, 2, 3  ... i]
-            # Use broadcasting to create a boolean mask                                          # ^  
-            num_devices *= self._action_s                                                        # |
-            mask = row_indices < num_devices.unsqueeze(1)                                        # |_ Then create a mask of same dimensions as this matrix where True at indicies are less than action size per device times device 
-            logits = logits.masked_fill(~mask, float('-inf'))
+            logits = self._mask_func(batch_size, logits, _NEG_INF, num_devices)
+            
         dist = Categorical(logits=logits)
         action = dist.sample()
         action_probs = dist.probs
         log_prob = F.log_softmax(logits, dim=-1)
-
         return action, log_prob, action_probs
+    
+    def _mask_func(self, batch_size : int, logits : Tensor, mask_num : float, num_devices : Tensor) -> Tensor:
+        # Create an index tensor for each row, broadcast to match the size of matrix         # [1, 2, 3, ... i]
+        row_indices = torch.arange(logits.size(-1)).unsqueeze(0).expand(batch_size, -1)   # [1, 2, 3  ... i]
+        # Use broadcasting to create a boolean mask                                          # ^  
+        num_devices *= self._action_s                                                        # |
+        mask = row_indices < num_devices.unsqueeze(1)                                        # |_ Then create a mask of same dimensions as this matrix where True at indicies are less than action size per device times device 
+        return logits.masked_fill(~mask, float(mask_num))
+        
     
     def evaluate(self, state : Tensor) -> Tensor:
         """Will return the best action for evaulation"""
         
-        return torch.argmax(self._logits(state))
+        return torch.argmax(self._mask_func(1, self._logits(state), '-inf', torch.tensor([1])))
     
     def update(self, trans : Transition, ce_state : Tensor) -> Tensor:
         """Using according to equation 12 as well as gradient based and return the actors loss, actors antropy, alpha loss, and the current alpha"""
@@ -287,7 +294,7 @@ class Actor(nn.Module):
         difference = self._alpha() * log_probs - q_v
 
         #Essentially batch dot product
-        loss = torch.bmm(action_probs.view(batch_size, 1, self._action_s),  difference.view(batch_size, self._action_s, 1)).mean()
+        loss = torch.bmm(action_probs.view(batch_size, 1, self._ouput_dim),  difference.view(batch_size, self._ouput_dim, 1)).mean()
 
         self._optim.zero_grad()
         loss.backward()
@@ -296,7 +303,7 @@ class Actor(nn.Module):
         alpha_loss, alpha = self._alpha.update(log_probs, action_probs, batch_size) #Do the update in the actor in order to not recaluate probs
 
         with torch.no_grad():
-            ent = -torch.bmm(action_probs.view(batch_size, 1, self._action_s), log_probs.view(batch_size, self._action_s, 1)).mean()
+            ent = -torch.bmm(action_probs.view(batch_size, 1, self._ouput_dim), log_probs.view(batch_size, self._ouput_dim, 1)).mean()
 
             return torch.stack((loss, ent, alpha_loss, alpha))
         

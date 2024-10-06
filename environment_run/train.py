@@ -15,6 +15,7 @@ import gym
 from discrete import create_hdc_agent, create_nn_agent
 from utils import MemoryBuffer, Transition, LearningLogger
 from .evaluate import evaluate
+from .helpers import convert_int_action, clean_state
 
 #Hyperparameters
 
@@ -164,31 +165,29 @@ def train(
     steps = 0
     num_epi = 0
     
-    def get_action(s : Tensor) -> tuple[tuple[int, int], int]:
+    def get_action(s : Tensor) -> tuple[tuple[tuple[int, int], int], Tensor]:
+        """Will get the action depending on exploring or doing the current policy
+           Will return the NASimEmu action and the integer action as a Tensor"""
         if explore_steps <= steps:
-            return _convert_int_action(agent(s).data, env, s)
+            action = agent(s.flatten().view(1, -1)) #Need to flatten here since it will still be in matrix form
+            return convert_int_action(action.data, env, s), action
         else:
-            return _convert_int_action(random.randint(0, env.action_space.n-1), env ,s)
-        
-    def clean_state(s : NDArray) -> NDArray:
-        """Will clean up the state and return it.
-           Many of the NASimEmu agents do not use the additonal information row (data about whether an action was successful)"""
-        return s[:-1]
+            action = random.randint(0, env.action_space.n-1) #Fix so that it takes into account padded actions depending on size of state
+            return convert_int_action(action, env ,s), torch.tensor(action) 
     
     state = torch.tensor(clean_state(env.reset()), device=device_obj, dtype=torch.float32)
 
     try:
         while max_steps > steps:
-            action = get_action(state)
-            next_state, reward, terminated, _ = env.step(action)
-            done = terminated
-            next_state = torch.tensor(next_state, device=device_obj, dtype=torch.float32)
-            trans = Transition( #states will be np arrays, actions will be tensors, the reward will be a float, and terminated will be a bool
-                state,
-                action,
-                next_state,
-                torch.tensor([reward], device=device_obj, dtype=torch.float32),
-                torch.tensor([terminated], device=device_obj, dtype=torch.float32)
+            action_nas, action = get_action(state)
+            next_state, reward, done, _ = env.step(action_nas)
+            next_state = torch.tensor(next_state, device=device_obj, dtype=torch.float32).view(-1, state_space)
+            trans = Transition( #states will be tensors, actions will be tensor integers, the reward will be a float, and terminated will be a bool
+                state=state,
+                action=action,
+                next_state=next_state,
+                reward=torch.tensor([reward], device=device_obj, dtype=torch.float32),
+                done=torch.tensor([False], device=device_obj, dtype=torch.float32) #Currently the agent never actually comes to a point where it makes a move that terminates. Therefor done should not be incorporated 
             )
 
             buffer.add_data(trans)
@@ -199,7 +198,7 @@ def train(
             steps += 1
 
             if done:
-                next_state = torch.tensor(env.reset()[0], device=device_obj, dtype=torch.float32)
+                next_state = torch.tensor(env.reset()[0], device=device_obj, dtype=torch.float32).view(-1, state_space)
                 if explore_steps <= steps:
                     num_epi += 1
                     if num_epi % eval_frequency == 0:
@@ -223,13 +222,6 @@ def _csv_of_hparams(log_dir : Path, h_params_dict : dict):
         for key, value in h_params_dict.items():
             writer.writerow([key, value])
         #writer.writerow(['clip_critic', True])
-
-def _convert_int_action(action : int, env, s : Tensor) -> tuple[tuple[int, int], int]:
-    """Will convert an integer from policy into tuple containing device and action to do at device"""
-    aux_row = np.zeros((1, s.shape[1])) #Needed since possible actions assumes that there is the auxillary data that was cut out earlier
-    np_s = s.cpu().numpy()
-    np_s = np.concatenate((np_s, aux_row), axis=0)
-    return env_utils.get_possible_actions(env, np_s)[action]
 
 if __name__ == '__main__':
     for i in range(3):

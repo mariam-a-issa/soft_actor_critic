@@ -2,6 +2,7 @@ from collections import deque
 from typing import NamedTuple
 import random
 import torch
+from torch import tensor
 
 class Transition(NamedTuple):
     "Will be how a single transition of environment is stored"
@@ -39,8 +40,8 @@ class MemoryBuffer:
         num_devices_n = torch.stack(num_devices_n, dim = 0)
         
         if self._dynamic: #Need to do this since torch.utils.rnn.pad_sequence takes list of Tensors, stack can not have variable length of tensor
-            state = list(state.flatten())
-            next_state = list(next_state.flatten())
+            state = list(state)
+            next_state = list(next_state)
         else:
             state = torch.stack(state, dim=0)
             next_state = torch.stack(next_state, dim=0)
@@ -51,9 +52,14 @@ class MemoryBuffer:
         """Will add the data from the single transition into the buffer"""
         
         if len(trans.state.shape) == 2 and trans.num_devices is None:
-            trans.num_devices = trans.state.shape[0]
-            trans.num_device_n = trans.next_state.shape[0]
-            trans.state = trans.state.flatten()
-            trans.next_state = trans.next_state.flatten()
+            
+            trans = Transition(state=trans.state.flatten(),
+                               action = trans.action,
+                               next_state=trans.next_state.flatten(),
+                               reward=trans.reward,
+                               done = trans.done,
+                               num_devices=tensor(trans.state.shape[0]),
+                               num_devices_n=tensor(trans.next_state.shape[0])
+                               )
         
         self._memory.append(trans)
