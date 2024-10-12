@@ -181,6 +181,7 @@ def train(
         while max_steps > steps:
             action_nas, action = get_action(state)
             next_state, reward, done, _ = env.step(action_nas)
+            next_state = clean_state(next_state)
             next_state = torch.tensor(next_state, device=device_obj, dtype=torch.float32).view(-1, state_space)
             trans = Transition( #states will be tensors, actions will be tensor integers, the reward will be a float, and terminated will be a bool
                 state=state,
@@ -198,14 +199,16 @@ def train(
             steps += 1
 
             if done:
-                next_state = torch.tensor(env.reset()[0], device=device_obj, dtype=torch.float32).view(-1, state_space)
                 if explore_steps <= steps:
                     num_epi += 1
                     if num_epi % eval_frequency == 0:
-                        evaluate(env, agent, num_evals, num_epi)
+                        evaluate(deepcopy(env), agent, num_evals, num_epi) #Need to deepcopy so that we keep the environment the same when training or else the state the environment will be in will be different from the state that is in next_state
 
             state = next_state
-
+            print(steps)
+    except Exception as e:
+        raise e
+    
     finally:
         agent.save_actor(job_name)
         env.close()
