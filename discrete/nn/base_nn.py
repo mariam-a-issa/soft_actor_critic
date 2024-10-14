@@ -21,9 +21,9 @@ class BaseNN(nn.Module):
                                 nn.Linear(self._hidden_size, self.output_size))
         self._id = None
 
-    def forward(self, x : Tensor) -> Tensor:
+    def forward(self, state : Tensor, num_devices : Tensor = None, batch_size : int = None) -> Tensor:
         """Using batchs x should be N x D where N is the number of batches"""
-        return self.layers(x)
+        return self.layers(state)
     
     def save(self, file_name ='best_weights.pt') -> None:
         """Will save the model in the folder 'model' in the dir that the script was run in."""
@@ -44,3 +44,21 @@ class BaseNN(nn.Module):
         if self._id is None:
             return ''
         return self._id
+
+
+def pad(state : Tensor | list[Tensor], input_size : int) -> Tensor:
+    """Will pad the state tensor correctly. Note that here we consider either a single matrix or a batch list of matrices. 
+       Either return a single vector representing the state or a matrix representing the batch of states"""
+    if isinstance(state, Tensor):
+        padded_state = torch.zeros(input_size)
+        state = state.flatten()
+        padded_state[:len(state)] = state
+        return padded_state
+    elif isinstance(state, list):
+        state = [s.flatten() for s in state] #Slow but need to do it here. Maybe move to data collection but then becomes tricky
+        padded_state = torch.zeros(input_size) #Need to pad first one to desired length
+        padded_state[:len(state[0])] = state[0]
+        state[0] = padded_state
+        return torch.nn.utils.rnn.pad_sequence(state, batch_first=True, padding_value=0)
+    else:
+        raise TypeError("Incorrect state representation for padding")

@@ -169,7 +169,7 @@ def train(
         """Will get the action depending on exploring or doing the current policy
            Will return the NASimEmu action and the integer action as a Tensor"""
         if explore_steps <= steps:
-            action = agent(s.flatten().view(1, -1)) #Need to flatten here since it will still be in matrix form
+            action = agent(s) 
             return convert_int_action(action.data, env, s), action
         else:
             action = random.randint(0, env.action_space.n-1) #Fix so that it takes into account padded actions depending on size of state

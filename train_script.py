@@ -3,15 +3,15 @@ import os
 
 from environment_run import train
 
-MAIN_EXPERIMENT_NAME = 'nasimemu_hdc_corpv2_stp100_aug'
+MAIN_EXPERIMENT_NAME = 'nasimemu_nn_corpv2_stp100_aug'
 NUM_RUNS = 1
 OTHER_HPARAMS = { #Just the default params that may be different than the ones in the training file
-    'hdc_agent' : True,
+    'hdc_agent' : False,
     'alpha_value' : .4, #The tempurature coefficient or scaling factor for the target entropy when autotuning 
     'autotune' : False,
-    'alpha_lr' : 5e-4,
-    'critic_lr' : 5e-4,
-    'policy_lr' : 5e-4,
+    'alpha_lr' : 3e-4,
+    'critic_lr' : 3e-4,
+    'policy_lr' : 3e-4,
     'hypervec_dim' : 4096,
     'hidden_size' : 512,
     'sample_size' : 64,
@@ -26,8 +26,8 @@ OTHER_HPARAMS = { #Just the default params that may be different than the ones i
     'max_steps' : 200000,
     'eval_frequency' : 10,
     'num_evals' : 5,
-    'tensorboard' : True,
-    'wandb' : True,
+    'tensorboard' : False,
+    'wandb' : False,
     'dynamic' : True
 }
 

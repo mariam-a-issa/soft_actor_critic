@@ -3,9 +3,8 @@ from typing import Callable
 from torch import Tensor, tensor
 import torch
 
-from utils import MemoryBuffer, Transition, LearningLogger
+from utils import MemoryBuffer, Transition, LearningLogger, MAX_ROWS
 from . import nn, hdc
-
 
 def create_nn_agent(input_size : int,
                  output_size : int,
@@ -24,6 +23,9 @@ def create_nn_agent(input_size : int,
                  dynamic : bool):
     """Will create SAC agent based on NNs"""
     
+    if dynamic:
+        actual_input_size = input_size * MAX_ROWS
+    
     target_q = nn.QFunctionTarget(None, tau)
     alpha = nn.Alpha(output_size, alpha_value, alpha_lr, autotune=autotune)
 
@@ -32,7 +34,8 @@ def create_nn_agent(input_size : int,
                             hidden_size,
                             target_q,
                             alpha, 
-                            policy_lr)
+                            policy_lr,
+                            dynamic)
         
     q_function = nn.QFunction(input_size,
                                      output_size,
@@ -41,7 +44,8 @@ def create_nn_agent(input_size : int,
                                      target_q,
                                      alpha,
                                      critic_lr,
-                                     discount)
+                                     discount,
+                                     dynamic)
         
     target_q.set_actual(q_function)
     
@@ -50,6 +54,14 @@ def create_nn_agent(input_size : int,
     
     def update(trans : Transition) -> Tensor:
         """Will return tensor of the losses in a tensor of dim 6 in order of Qfunc1, Qfunc2, Actor Loss, Entropy, Alpha Loss, Alpha Value"""
+        if dynamic:
+            trans = Transition(state = nn.pad(trans.state, actual_input_size),
+                       next_state = nn.pad(trans.next_state, actual_input_size),
+                       action=trans.action,
+                       reward=trans.reward,
+                       done=trans.done,
+                       num_devices=trans.num_devices,
+                       num_devices_n=trans.num_devices_n)
         q_info = q_function.update(trans)
         actor_info = actor.update(trans)
         return torch.cat((q_info, actor_info))
@@ -57,7 +69,12 @@ def create_nn_agent(input_size : int,
     def call(state : Tensor) -> Tensor:
         """Will return the action that should be executed at the given state"""
         with torch.no_grad():
-            action, _, _ = actor(state)
+            if dynamic: 
+                actual_state = nn.pad(state, actual_input_size)
+            else:
+                actual_state = state
+            #Even though this looks like it would work with dynamic False I do not think it would. Should just assume it is dynamic for this branch tbh
+            action, _, _ = actor(actual_state, num_devices = tensor(state.shape[0]).unsqueeze(dim=0), batch_size = 1)
             return action
     
     def evaluate(state : Tensor) -> Tensor:

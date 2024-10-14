@@ -48,14 +48,16 @@ class MemoryBuffer:
         
         return Transition(state=state, action=action, next_state=next_state, reward=reward, done=done, num_devices=num_devices, num_devices_n=num_devices_n)
     
+    #We should store as a matrix instead of a flattened vector so that certain models/encoders can access each individual host however they choose
+    #May want to fix in future so that we do not have num devices as this data is redundant if we are storing as a matrix
     def add_data(self, trans : Transition) -> None:
         """Will add the data from the single transition into the buffer"""
         
         if len(trans.state.shape) == 2 and trans.num_devices is None:
             
-            trans = Transition(state=trans.state.flatten(),
+            trans = Transition(state=trans.state,
                                action = trans.action,
-                               next_state=trans.next_state.flatten(),
+                               next_state=trans.next_state,
                                reward=trans.reward,
                                done = trans.done,
                                num_devices=tensor(trans.state.shape[0]),

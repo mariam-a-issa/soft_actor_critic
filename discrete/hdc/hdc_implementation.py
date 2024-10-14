@@ -10,10 +10,9 @@ import torch.nn.functional as F
 
 from .encoders import RBFEncoder, EXPEncoder
 from utils.data_collection import Transition
+from utils import MAX_ROWS, NEG_INF 
 
-_EPS = 1e-4
-_NEG_INF = -40 #For when we are masking
-_MAX_ROWS = 50 #Same variable in encoders
+_EPS = 1e-4 #Same variable in encoders
 
 #Copied from nn implementation could there be another way to do this?
 class Alpha:
@@ -108,7 +107,7 @@ class QFunction:
         """Will create a Q function that has two q models"""
 
         if dynamic:
-            action_dim *= _MAX_ROWS
+            action_dim *= MAX_ROWS
         
         self._q1 = QModel(hvec_dim, action_dim)
         self._q2 = QModel(hvec_dim, action_dim)
@@ -232,7 +231,7 @@ class Actor(nn.Module):
         self._action_s = action_dim #Amount of actions per device
         
         if dynamic:
-            action_dim *= _MAX_ROWS
+            action_dim *= MAX_ROWS
         
         self._a_encoder = actor_encoder
         
@@ -256,7 +255,7 @@ class Actor(nn.Module):
         
         if num_devices is not None: #Basically when we need to pad
             batch_size = state.shape[0] if batch_size is None else batch_size
-            logits = self._mask_func(batch_size, logits, _NEG_INF, num_devices)
+            logits = self._mask_func(batch_size, logits, NEG_INF, num_devices)
             
         dist = Categorical(logits=logits)
         action = dist.sample()
