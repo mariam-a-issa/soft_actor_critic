@@ -26,8 +26,8 @@ OTHER_HPARAMS = { #Just the default params that may be different than the ones i
     'max_steps' : 200000,
     'eval_frequency' : 10,
     'num_evals' : 5,
-    'tensorboard' : False,
-    'wandb' : False,
+    'tensorboard' : True,
+    'wandb' : True,
     'dynamic' : True
 }
 

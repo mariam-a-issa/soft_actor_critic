@@ -241,10 +241,10 @@ class Actor(BaseNN):
         mask = row_indices < num_devices.unsqueeze(1)                                        # |_ Then create a mask of same dimensions as this matrix where True at indicies are less than action size per device times device 
         return logits.masked_fill(~mask, float(mask_num))
     
-    def evaluate(self, state : Tensor) -> Tensor:
+    def evaluate(self, state : Tensor, num_devices : Tensor) -> Tensor:
         """Will return the best action for evaulation"""
         
-        return torch.argmax(self._mask_func(1, super().forward(state), '-inf', torch.tensor([1])))
+        return torch.argmax(self._mask_func(1, super().forward(state), '-inf', num_devices))
     
     def update(self, trans : Transition) -> Tensor:
         """Will update according to equation 12 and return the actors loss, actors entropy, alpha_loss, and the current alpha"""

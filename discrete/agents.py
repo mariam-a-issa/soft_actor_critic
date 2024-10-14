@@ -79,7 +79,11 @@ def create_nn_agent(input_size : int,
     
     def evaluate(state : Tensor) -> Tensor:
         with torch.no_grad():
-            return actor.evaluate(state)
+            if dynamic: 
+                actual_state = nn.pad(state, actual_input_size)
+            else:
+                actual_state = state
+            return actor.evaluate(actual_state, tensor([state.shape[0]]))
     
     return Agent(
         target_update,
