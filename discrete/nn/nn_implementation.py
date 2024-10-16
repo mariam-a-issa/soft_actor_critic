@@ -25,7 +25,8 @@ class QFunction:
                  alpha : 'Alpha',
                  lr : float,
                  discount : float,
-                 dynamic) -> None:
+                 dynamic : bool,
+                 grad_clip : float) -> None:
         
         """Will create a q function that will use two q models"""
         
@@ -35,6 +36,8 @@ class QFunction:
         else:
             actual_input_size = input_size
             actual_output_size = output_size
+            
+        self._g_clip = grad_clip
         
         self._q1 = BaseNN(actual_input_size, actual_output_size, hidden_size, id=1)
         self._q2 = BaseNN(actual_input_size, actual_output_size, hidden_size, id=2)
@@ -100,6 +103,10 @@ class QFunction:
 
         ls1.backward()
         ls2.backward()
+        
+        if self._g_clip is not None:
+            torch.nn.utils.clip_grad_norm_(self._q1.parameters(), self._g_clip)
+            torch.nn.utils.clip_grad_norm_(self._q2.parameters(), self._g_clip)
         
         self._optim1.step()
         self._optim2.step()
@@ -194,7 +201,8 @@ class Actor(BaseNN):
                  target : QFunctionTarget, 
                  alpha : 'Alpha',
                  lr : float,
-                 dynamic) -> None:
+                 dynamic : bool, 
+                 grad_clip : float) -> None:
         
         if dynamic:
             actual_input_size = MAX_ROWS * input_size
@@ -202,6 +210,8 @@ class Actor(BaseNN):
         else:
             actual_input_size = input_size
             actual_output_size = output_size
+            
+        self._g_clip = grad_clip
             
         super().__init__(actual_input_size, actual_output_size, hidden_size)
         
@@ -263,6 +273,10 @@ class Actor(BaseNN):
 
         self._optim.zero_grad()
         loss.backward()
+        
+        if self._g_clip is not None:
+            torch.nn.utils.clip_grad_norm_(self.parameters(), self._g_clip)
+        
         self._optim.step()
 
         alpha_loss, alpha = self._alpha.update(log_probs, action_probs, batch_size) #Do the update in the actor in order to not recaluate probs

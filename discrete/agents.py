@@ -20,7 +20,8 @@ def create_nn_agent(input_size : int,
                  update_frequency : int, #When the models should update,
                  learning_steps : int, #Amount of gradient steps
                  device : torch.device,
-                 dynamic : bool):
+                 dynamic : bool,
+                 grad_clip : float):
     """Will create SAC agent based on NNs"""
     
     if dynamic:
@@ -35,7 +36,8 @@ def create_nn_agent(input_size : int,
                             target_q,
                             alpha, 
                             policy_lr,
-                            dynamic)
+                            dynamic,
+                            grad_clip)
         
     q_function = nn.QFunction(input_size,
                                      output_size,
@@ -45,7 +47,8 @@ def create_nn_agent(input_size : int,
                                      alpha,
                                      critic_lr,
                                      discount,
-                                     dynamic)
+                                     dynamic,
+                                     grad_clip)
         
     target_q.set_actual(q_function)
     
@@ -112,8 +115,8 @@ def create_hdc_agent(input_size : int,
                  dynamic : bool):
     """Will create SAC agent based on HDC"""
     
-    actor_encoder = hdc.RBFEncoder(input_size, hyper_dim, dynamic)
-    critic_encoder = hdc.EXPEncoder(input_size, hyper_dim, dynamic)
+    actor_encoder = hdc.RBFEncoderFlatten(input_size, hyper_dim, dynamic)
+    critic_encoder = hdc.EXPEncoderFlatten(input_size, hyper_dim, dynamic)
 
     target_q = hdc.TargetQFunction(tau, None)
     alpha = hdc.Alpha(output_size, alpha_value, critic_lr, autotune=autotune)

@@ -7,18 +7,24 @@ from torch import Tensor, nn
 class BaseNN(nn.Module):
     """Base class for constructing NNs"""
 
-    def __init__(self, input_size : int,  output_size : int, hidden_size : int, id : int = None) -> None:
+    def __init__(self, input_size : int,  output_size : int, hidden_size : list[int], id : int = None) -> None:
         super().__init__()
         self.input_size = input_size
         self.output_size = output_size
         self._hidden_size = hidden_size
 
-        self.layers = nn.Sequential(
-                                nn.Linear(self.input_size, self._hidden_size),
-                                nn.ReLU(),
-                                nn.Linear(self._hidden_size, self._hidden_size),
-                                nn.ReLU(),
-                                nn.Linear(self._hidden_size, self.output_size))
+        layer_list = [nn.Linear(input_size, hidden_size[0]), nn.ReLU()]
+        
+        for i, size in enumerate(hidden_size[:-1]):
+            layer_list.extend([
+                nn.Linear(size, hidden_size[i+1]),
+                nn.ReLU()
+            ])
+        
+        layer_list.append(nn.Linear(hidden_size[-1], output_size))
+        
+        self.layers = nn.Sequential(*layer_list)
+        
         self._id = None
 
     def forward(self, state : Tensor, num_devices : Tensor = None, batch_size : int = None) -> Tensor:

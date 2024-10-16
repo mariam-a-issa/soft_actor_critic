@@ -71,7 +71,8 @@ def train(
         num_evals : int = NUM_EVALS,
         tensorboard : bool = True,
         wandb : bool = True,
-        dynamic : bool = False) -> None:
+        dynamic : bool = False,
+        grad_clip : float = None) -> None:
     """Will be the main training loop"""
     
     main_dir = Path(base_dir)
@@ -159,7 +160,8 @@ def train(
             update_frequency,
             learning_steps,
             device_obj,
-            dynamic
+            dynamic,
+            grad_clip
         )
 
     steps = 0
