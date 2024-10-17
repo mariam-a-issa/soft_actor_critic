@@ -166,6 +166,7 @@ def train(
 
     steps = 0
     num_epi = 0
+    epi_reward = 0
     
     def get_action(s : Tensor) -> tuple[tuple[tuple[int, int], int], Tensor]:
         """Will get the action depending on exploring or doing the current policy
@@ -192,6 +193,8 @@ def train(
                 reward=torch.tensor([reward], device=device_obj, dtype=torch.float32),
                 done=torch.tensor([False], device=device_obj, dtype=torch.float32) #Currently the agent never actually comes to a point where it makes a move that terminates. Therefor done should not be incorporated 
             )
+            
+            epi_reward += reward
 
             buffer.add_data(trans)
             
@@ -201,6 +204,9 @@ def train(
             steps += 1
 
             if done:
+                
+                logger.log_scalars({'Training reward' : epi_reward}, episodes=num_epi)
+                
                 if explore_steps <= steps:
                     num_epi += 1
                     if num_epi % eval_frequency == 0:
