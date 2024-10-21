@@ -42,6 +42,9 @@ LOG_DIR = './runs/large__alpha'
 
 MAX_STEPS = 6e5
 
+
+MAGIC_CORP_NUM = 20 #Magic number involved with indexing in the corp scenario
+
 def train(
         run_name : str = '',  #Multiple runs inside of a job (Usually for different seeds)
         base_dir : str = LOG_DIR, #Root of all experiments
@@ -104,7 +107,7 @@ def train(
         #Got from their config file on how to get sorta of an idea of the size of state and action spaces
         action_space = len(env.action_list)
         s = env.reset()
-        state_space = s.shape[1]
+        state_space = s.shape[1] - MAGIC_CORP_NUM
         dynamic = True
     else:
         action_space = env.action_space.n
@@ -168,22 +171,24 @@ def train(
     num_epi = 0
     epi_reward = 0
     
-    def get_action(s : Tensor) -> tuple[tuple[tuple[int, int], int], Tensor]:
+    def get_action(state : Tensor, real_state : NDArray) -> tuple[tuple[tuple[int, int], int], Tensor]:
         """Will get the action depending on exploring or doing the current policy
            Will return the NASimEmu action and the integer action as a Tensor"""
         if explore_steps <= steps:
-            action = agent(s) 
-            return convert_int_action(action.data, env, s), action
+            action = agent(state) 
+            return convert_int_action(action.data, env, real_state), action
         else:
             action = random.randint(0, env.action_space.n-1) #Fix so that it takes into account padded actions depending on size of state
-            return convert_int_action(action, env ,s), torch.tensor(action) 
+            return convert_int_action(action, env ,state), torch.tensor(action) 
     
-    state = torch.tensor(clean_state(env.reset()), device=device_obj, dtype=torch.float32)
+    real_state = env.reset()
+    state = torch.tensor(clean_state(real_state), device=device_obj, dtype=torch.float32)
 
     try:
         while max_steps > steps:
-            action_nas, action = get_action(state)
+            action_nas, action = get_action(state, real_state)
             next_state, reward, done, _ = env.step(action_nas)
+            real_state = next_state
             next_state = clean_state(next_state)
             next_state = torch.tensor(next_state, device=device_obj, dtype=torch.float32).view(-1, state_space)
             trans = Transition( #states will be tensors, actions will be tensor integers, the reward will be a float, and terminated will be a bool
