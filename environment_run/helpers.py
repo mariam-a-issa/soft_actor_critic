@@ -19,4 +19,4 @@ def convert_int_action(action : int, env, s : Tensor | NDArray) -> tuple[tuple[i
 def clean_state(s : NDArray) -> NDArray:
     """Will clean up the state and return it.
         Many of the NASimEmu agents do not use the additonal information row (data about whether an action was successful)"""
-    return s[:-1]
+    return s[:-1, 20:] #Removes last layer and then removes ids that takes the first twenty in 

@@ -205,8 +205,9 @@ def train(
 
             if done:
                 
-                logger.log_scalars({'Training reward' : epi_reward}, episodes=num_epi)
+                LearningLogger().log_scalars({'Training reward' : epi_reward}, episodes=num_epi)
                 
+                epi_reward = 0
                 if explore_steps <= steps:
                     num_epi += 1
                     if num_epi % eval_frequency == 0:
