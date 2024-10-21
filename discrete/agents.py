@@ -115,8 +115,8 @@ def create_hdc_agent(input_size : int,
                  dynamic : bool):
     """Will create SAC agent based on HDC"""
     
-    actor_encoder = hdc.RBFEncoderFlatten(input_size, hyper_dim, dynamic)
-    critic_encoder = hdc.EXPEncoderFlatten(input_size, hyper_dim, dynamic)
+    actor_encoder = hdc.RBFEncoder(input_size, hyper_dim, dynamic)
+    critic_encoder = hdc.EXPEncoder(input_size, hyper_dim, dynamic)
 
     target_q = hdc.TargetQFunction(tau, None)
     alpha = hdc.Alpha(output_size, alpha_value, critic_lr, autotune=autotune)
@@ -157,7 +157,7 @@ def create_hdc_agent(input_size : int,
     def call(state : Tensor) -> Tensor:
         """Will use HDC actor to determine action that should be taken at the given state"""
         with torch.no_grad():
-            ae_state = actor_encoder(state.squeeze())
+            ae_state = actor_encoder(state.flatten())
             action, _, _ = actor(ae_state, num_devices = tensor(state.shape[0]).unsqueeze(dim=0), batch_size = 1)
             return action
         

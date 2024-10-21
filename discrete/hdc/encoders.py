@@ -69,6 +69,11 @@ def _pad(state : Tensor | list[Tensor], input_size : int) -> Tensor:
         padded_state[:len(state)] = state
         return padded_state
     elif isinstance(state, list):
+        
+        #Is slow but will flatten each tensor
+        for i, s in enumerate(state):
+            state[i] = s.view(-1)
+            
         padded_state = torch.zeros(input_size) #Need to pad first one to desired length
         padded_state[:len(state[0])] = state[0]
         state[0] = padded_state
