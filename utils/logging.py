@@ -2,6 +2,8 @@ from torch.utils.tensorboard import SummaryWriter
 from pathlib import Path
 import wandb
 
+PROJECT_NAME = 'NASIM Hyperparamtune'
+
 class LearningLogger:
     """Creates a logging class to handle specific types of logging for data about the perforamnce of the model"""
     _instance = None
@@ -25,7 +27,7 @@ class LearningLogger:
             self._loggers['tensorboard'] = None
                 
         if wand:
-            writer = wandb.init(project='SAC in NASIM', name=group_name + '/' + job_name + '/' + run_name, config=hparams_config)
+            writer = wandb.init(project=PROJECT_NAME, name=group_name + '/' + job_name + '/' + run_name, config=hparams_config)
             self._loggers['wandb'] = writer
             writer.define_metric('Episode')
             writer.define_metric('Episodic Reward', step_metric='Episode')

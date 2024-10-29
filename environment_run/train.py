@@ -64,7 +64,9 @@ def train(
         gpu : bool = True,
         learning_steps : int = LEARNING_STEPS,
         eval_frequency : int = EVAL_FREQUENCY,
-        num_evals : int = NUM_EVALS) -> None:
+        num_evals : int = NUM_EVALS,
+        wandb : bool = True,
+        tensorboard : bool = True) -> None:
     """Will be the main training loop"""
     
     main_dir = Path(base_dir)
@@ -79,7 +81,7 @@ def train(
 
     buffer = MemoryBuffer(buffer_size, sample_size, random)
 
-    logger = LearningLogger(base_dir, group_name, job_name, run_name, h_params_dict)
+    logger = LearningLogger(base_dir, group_name, job_name, run_name, h_params_dict, wand=wandb, tensorboard=tensorboard)
     
     #"LunarLander-v2"
     #"CartPole-v1"

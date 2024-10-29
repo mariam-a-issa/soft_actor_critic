@@ -3,7 +3,7 @@ import os
 
 from environment_run import train
 
-MAIN_EXPERIMENT_NAME = 'nasim_tempcoef_hdc'
+MAIN_EXPERIMENT_NAME = 'nasim_hyperparam_alpha_medium'
 NUM_RUNS = 1
 OTHER_HPARAMS = { #Just the default params that may be different than the ones in the training file
     'hdc_agent' : True,
@@ -20,12 +20,13 @@ OTHER_HPARAMS = { #Just the default params that may be different than the ones i
     'learning_steps' : 1,
     'target_update' : 1,
     'update_frequency' : 1,
-    'environment_name' : 'nasim:Small-v0',
+    'environment_name' : 'nasim:Medium-v0',
     'max_steps' : 150000,
     'eval_frequency' : 100,
     'num_evals' : 5,
-    'autotune' : False
-    
+    'autotune' : False,
+    'wandb' : True,
+    'tensorboard' : True
 }
 
 def train_hyper_param(name : str, values : list[float], seeds : list[int]):
@@ -51,4 +52,4 @@ def train_hyper_param(name : str, values : list[float], seeds : list[int]):
 
 if __name__ == '__main__':
     os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8' #Needed since training will have to be deterministic. More info at https://docs.nvidia.com/cuda/cublas/index.html#cublasApi_reproducibility
-    train_hyper_param('alpha_value', [.25, .5, .75, 1, 1.25, 1.5, 1.75, 2], [0, 1, 2, 3, 4])
+    train_hyper_param('alpha_value', [.1, .2, .3, .4, .5, .6, .7, .8, .9], [0, 1, 2, 3, 4])
