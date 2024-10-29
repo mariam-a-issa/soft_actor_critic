@@ -9,7 +9,7 @@ from . import nn, hdc
 
 def create_nn_agent(input_size : int,
                  output_size : int,
-                 hidden_size : int,
+                 hidden_size : list[int],
                  policy_lr : float,
                  critic_lr : float,
                  alpha_lr : float,

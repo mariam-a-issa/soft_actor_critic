@@ -16,7 +16,7 @@ from .evaluate import evaluate
 #Hyperparameters
 
 LR = 3e-4
-HIDDEN_LAYER_SIZE = 256
+HIDDEN_LAYER_SIZE = [512, 512]
 HYPER_VEC_DIM = 2048
 POLICY_LR = LR
 CRITIC_LR = LR
@@ -37,13 +37,14 @@ NUM_EVALS = 3
 LOG_DIR = './runs/large__alpha'
 
 MAX_STEPS = 6e5
+MAX_EPI = 3e5
 
 def train(
         run_name : str = '',  #Multiple runs inside of a job (Usually for different seeds)
         base_dir : str = LOG_DIR, #Root of all experiments
         group_name : str = '', #Groups of various experiments
         job_name : str = '',   #Individual jobs in the experiment
-        hidden_size : int = HIDDEN_LAYER_SIZE,
+        hidden_size : list[int] = HIDDEN_LAYER_SIZE,
         policy_lr : float = POLICY_LR,
         critic_lr : float = CRITIC_LR,
         alpha_lr : float = ALPHA_LR,
@@ -57,6 +58,7 @@ def train(
         buffer_size : int = BUFFER_SIZE,
         sample_size : int = SAMPLE_SIZE,
         max_steps : int = MAX_STEPS,
+        max_epi : int = MAX_EPI,
         hdc_agent : bool = False,
         hypervec_dim : int = HYPER_VEC_DIM,
         environment_name : str = 'LunarLander-v2',
@@ -150,7 +152,7 @@ def train(
     state = torch.tensor(env.reset(seed=seed)[0], device=device_obj, dtype=torch.float32)
 
     try:
-        while max_steps > steps:
+        while (max_steps is not None and max_steps > steps) or (max_epi is not None and max_epi > num_epi):
             action = get_action(state).unsqueeze(dim = 0)
             next_state, reward, terminated, truncated, _ = env.step(action.clone().detach().cpu().item())
             done = terminated or truncated

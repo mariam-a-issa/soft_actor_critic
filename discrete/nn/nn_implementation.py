@@ -18,7 +18,7 @@ class QFunction:
     def __init__(self, 
                  input_size : int, 
                  output_size : int, 
-                 hidden_size : int, 
+                 hidden_size : list[int], 
                  actor : 'Actor', 
                  target : 'QFunctionTarget',
                  alpha : 'Alpha',
@@ -174,7 +174,7 @@ class Actor(BaseNN):
     def __init__(self, 
                  input_size: int,
                  output_size: int, 
-                 hidden_size,
+                 hidden_size : list[int],
                  target : QFunctionTarget, 
                  alpha : 'Alpha',
                  lr : float) -> None:
