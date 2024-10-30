@@ -3,14 +3,14 @@ import os
 
 from environment_run import train
 
-MAIN_EXPERIMENT_NAME = 'nasim_hyperparam_lr_medium_hdc'
+MAIN_EXPERIMENT_NAME = 'nasim_hyperparam_alpha_medium_hdc'
 NUM_RUNS = 1
 OTHER_HPARAMS = { #Just the default params that may be different than the ones in the training file
     'hdc_agent' : True,
     'alpha_value' : .25,
     'alpha_lr' : 5e-4,
     'critic_lr' : 5e-4,
-    'hypervec_dim' : 2048,
+    'hypervec_dim' : 4096,
     'hidden_size' : [512, 512],
     'policy_lr' : 5e-4,
     'sample_size' : 256,
@@ -27,8 +27,8 @@ OTHER_HPARAMS = { #Just the default params that may be different than the ones i
     'eval_frequency' : 100,
     'num_evals' : 5,
     'autotune' : False,
-    'wandb' : False,
-    'tensorboard' : False
+    'wandb' : True,
+    'tensorboard' : True
 }
 
 def train_hyper_param(name : list[str], values : list[float], seeds : list[int]):
