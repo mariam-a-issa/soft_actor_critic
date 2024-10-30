@@ -22,7 +22,7 @@ OTHER_HPARAMS = { #Just the default params that may be different than the ones i
     'target_update' : 1000,
     'update_frequency' : 1,
     'environment_name' : 'nasim:Medium-v0',
-    'max_steps' : 100,
+    'max_steps' : 200000,
     'max_epi' : None,
     'eval_frequency' : 100,
     'num_evals' : 5,
