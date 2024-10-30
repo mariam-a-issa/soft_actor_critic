@@ -154,7 +154,7 @@ def train(
     try:
         while (max_steps is not None and max_steps > steps) or (max_epi is not None and max_epi > num_epi):
             action = get_action(state).unsqueeze(dim = 0)
-            next_state, reward, terminated, truncated, _ = env.step(action.clone().detach().cpu().item())
+            next_state, reward, terminated, truncated, _ = env.step(action.cpu().item())
             done = terminated or truncated
             next_state = torch.tensor(next_state, device=device_obj, dtype=torch.float32)
             trans = Transition( #states will be np arrays, actions will be tensors, the reward will be a float, and terminated will be a bool
