@@ -22,13 +22,13 @@ OTHER_HPARAMS = { #Just the default params that may be different than the ones i
     'target_update' : 1000,
     'update_frequency' : 1,
     'environment_name' : 'nasim:Medium-v0',
-    'max_steps' : None,
-    'max_epi' : 1000,
+    'max_steps' : 750000,
+    'max_epi' : None,
     'eval_frequency' : 25,
     'num_evals' : 5,
     'autotune' : False,
     'wandb' : True,
-    'tensorboard' : True
+    'tensorboard' : False
 }
 
 def train_hyper_param(name : list[str], values : list[float], seeds : list[int]):
@@ -55,4 +55,4 @@ def train_hyper_param(name : list[str], values : list[float], seeds : list[int])
 
 if __name__ == '__main__':
     os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8' #Needed since training will have to be deterministic. More info at https://docs.nvidia.com/cuda/cublas/index.html#cublasApi_reproducibility
-    train_hyper_param(['alpha_value'], [.7, .8, .9], [0, 1, 2, 3, 4])
+    train_hyper_param(['alpha_value'], [.7], [3, 4])

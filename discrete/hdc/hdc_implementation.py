@@ -188,6 +188,8 @@ class TargetQFunction:
             self._q2 = deepcopy(q_function._q2)
 
         self._tau = tau
+        
+        self._dev = None
 
     def set_actual(self, q_function : QFunction) -> None:
         """Will actually set the q_function if it was not set in init"""
@@ -201,14 +203,20 @@ class TargetQFunction:
 
     def update(self) -> None:
         """Will do polyak averaging to each model in the target"""
-        for param, target_param in zip(self._actual._q1.parameters(), self._q1.parameters()):
-            target_param.data.copy_(self._tau * param.data + (1 - self._tau) * target_param.data)
-        for param, target_param in zip(self._actual._q2.parameters(), self._q2.parameters()):
-            target_param.data.copy_(self._tau * param.data + (1 - self._tau) * target_param.data)
+        #https://github.com/DLR-RM/stable-baselines3/issues/93
+        with torch.no_grad():
+            one = torch.ones(1, requires_grad=False).to(self._dev)
+            for param, target_param in zip(self._actual._q1.parameters(), self._q1.parameters()):
+                target_param.data.mul_(1-self._tau)
+                target_param.data.addcmul_(param.data, one, value=self._tau)
+            for param, target_param in zip(self._actual._q2.parameters(), self._q2.parameters()):
+                target_param.data.mul_(1-self._tau)
+                target_param.data.addcmul_(param.data, one, value=self._tau)
     
     def to(self, dev : torch.device) -> None:
         self._q1.to(dev)
         self._q2.to(dev)
+        self._dev = dev
 
 class Actor(nn.Module):
 
@@ -291,6 +299,10 @@ class Actor(nn.Module):
             os.makedirs(file_dir.parent)
 
         torch.save(self.state_dict(), file_dir)
+        
+    def to(self, device):
+        super().to(device)
+        self._dev = device
 
 
 
