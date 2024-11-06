@@ -88,7 +88,14 @@ class QFunction:
         self._optim1.step()
         self._optim2.step()
         
-        return torch.stack((ls1, ls2))
+        actual_q = torch.min(q1_a, q2_a)
+        
+        max_q = torch.max(actual_q)
+        min_q = torch.min(actual_q)
+        mean_q = torch.mean(actual_q)
+        std_q = torch.std(actual_q)
+        
+        return torch.stack((ls1, ls2, max_q, min_q, mean_q, std_q))
 
     def to(self, device) -> None:
         """Will move the QFunction to the device"""

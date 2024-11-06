@@ -183,7 +183,7 @@ class Agent:
         """Will perform the approaite update for the agent given the specific amount of steps"""
         if steps % self._update_frequency == 0:
             
-            logging_info = torch.zeros(6)
+            logging_info = torch.zeros(10)
             
             for _ in range(self._learning_steps):
                 logging_info += self._update_func(buffer.sample())
@@ -205,10 +205,14 @@ class Agent:
         log_dict = {
             'QFunc1 Loss' : logging_info[0].item(),
             'QFunc2 Loss' : logging_info[1].item(),
-            'Actor Loss' : logging_info[2].item(),
-            'Entropy' : logging_info[3].item(),
-            'Alpha Loss' : logging_info[4].item(),
-            'Alpha Value' : logging_info[5].item()
+            'QFunc Max' : logging_info[2].item(),
+            'QFunc Min' : logging_info[3].item(),
+            'Qfunc Mean' : logging_info[4].item(),
+            'Q Func Std' : logging_info[5].item(),
+            'Actor Loss' : logging_info[6].item(),
+            'Entropy' : logging_info[7].item(),
+            'Alpha Loss' : logging_info[8].item(),
+            'Alpha Value' : logging_info[9].item()
         }
         
         logger.log_scalars(log_dict, steps=steps)

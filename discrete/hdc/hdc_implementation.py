@@ -167,7 +167,15 @@ class QFunction:
             self._q1.parameters().index_add_(0, trans.action.squeeze(), matrix_l1)
             self._q2.parameters().index_add_(0, trans.action.squeeze(), matrix_l2)
         
-        return ce_state, torch.stack((1/2 * (l1 ** 2).mean(), 1/2 * (l2 ** 2).mean()))
+        actual_q = torch.min(q1_a, q2_a)
+        
+        max_q = torch.max(actual_q)
+        min_q = torch.min(actual_q)
+        mean_q = torch.mean(actual_q)
+        std_q = torch.std(actual_q)
+        
+        
+        return ce_state, torch.stack((1/2 * (l1 ** 2).mean(), 1/2 * (l2 ** 2).mean(), max_q, min_q, mean_q, std_q))
 
 
     def to(self, device : torch.device) -> None:
