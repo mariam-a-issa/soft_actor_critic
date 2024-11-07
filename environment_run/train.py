@@ -72,16 +72,12 @@ def train(
         tensorboard : bool = True) -> None:
     """Will be the main training loop"""
     
-    main_dir = Path(base_dir)
-    run_path = main_dir / group_name / job_name / run_name
-    
     h_params_dict = deepcopy(locals())
     del h_params_dict['run_name']
     del h_params_dict['base_dir']
     del h_params_dict['group_name']
     del h_params_dict['job_name']
     h_params_dict['host_name'] = socket.gethostname()
-    _csv_of_hparams(run_path, h_params_dict)
 
     buffer = MemoryBuffer(buffer_size, sample_size, random)
 
@@ -188,18 +184,6 @@ def train(
         agent.save_actor(job_name)
         env.close()
         logger.close()
-
-def _csv_of_hparams(log_dir : Path, h_params_dict : dict):
-    """Creates a csv at the log dir with the given hyperparameters"""
-
-    file = log_dir / 'hparams.csv'
-    file.parent.mkdir(parents=True, exist_ok=True)
-
-    with open(file, 'w+') as csv_file:
-        writer = csv.writer(csv_file)
-        for key, value in h_params_dict.items():
-            writer.writerow([key, value])
-        #writer.writerow(['clip_critic', True])
 
 if __name__ == '__main__':
     for i in range(3):

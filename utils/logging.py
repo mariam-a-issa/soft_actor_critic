@@ -1,6 +1,7 @@
 from torch.utils.tensorboard import SummaryWriter
 from pathlib import Path
 import wandb
+import csv
 
 PROJECT_NAME = 'NASIM Hyperparamtune'
 
@@ -21,8 +22,10 @@ class LearningLogger:
         self._hparams = hparams_config #Can be used at the end of a run alongside metrics to log hparams
         
         if tensorboard:
-            tense_writer = SummaryWriter(Path(base_dir) / group_name / job_name / run_name)
+            save_dir = Path(base_dir) / group_name / job_name / run_name
+            tense_writer = SummaryWriter(save_dir)
             self._loggers['tensorboard'] = tense_writer
+            _csv_of_hparams(save_dir, hparams_config)
         else:
             self._loggers['tensorboard'] = None
                 
@@ -74,3 +77,15 @@ class LearningLogger:
                 
         if self._loggers['wandb']:
             self._loggers['wandb'].finish()
+
+
+def _csv_of_hparams(log_dir : Path, h_params_dict : dict):
+    """Creates a csv at the log dir with the given hyperparameters"""
+
+    file = log_dir / 'hparams.csv'
+    file.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(file, 'w+') as csv_file:
+        writer = csv.writer(csv_file)
+        for key, value in h_params_dict.items():
+            writer.writerow([key, value])
