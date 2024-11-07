@@ -2,6 +2,7 @@ import random
 import csv
 from copy import deepcopy
 from pathlib import Path
+import socket
 
 import torch
 from torch import Tensor
@@ -79,6 +80,7 @@ def train(
     del h_params_dict['base_dir']
     del h_params_dict['group_name']
     del h_params_dict['job_name']
+    h_params_dict['host_name'] = socket.gethostname()
     _csv_of_hparams(run_path, h_params_dict)
 
     buffer = MemoryBuffer(buffer_size, sample_size, random)
