@@ -36,7 +36,7 @@ class Embedding(nn.Module):
         states = self._embeding(states)
         
         batch_index = torch.cat([torch.zeros(state_index[i + 1] - state_index[i], dtype=int) + i for i in range(len(state_index) - 1)]) #Will create an index that can be used by torch_scatter to reduce corresponding elements
-        
+        #TODO switch to pointer version of segment as segment_coo is non deterministic
         states_agg = torch.cat([segment_coo(states, batch_index, reduce='mean'), segment_coo(states, batch_index, reduce='max')], dim=1)
         states_agg = self._inner(states_agg)
         
@@ -136,6 +136,7 @@ class Critic(nn.Module):
         scaler = torch.tensor([state_index[i + 1] - state_index[i] for i in range(len(state_index) - 1)])[batch_index]
         
         #Following essentially takes average of all other device q values. We sum every single one and then subtract our own from it and then subtract the total amount of other devices. There is an edge case when there is no other devices.
+        #TODO switch to pointer version of segment as segment_coo is non deterministic
         action_q += ((device_q[:, 1] - segment_coo(device_q[:,1], batch_index, reduce='sum')[batch_index]) / (scaler - 1 + EPS)).view(-1,1) #Need EPS so that I am not deviding by zero when there is no other device. This will still end up being zero since the left hand side will be zero
         
         return _reshape(action_q, batch_index, self._action_dim, filler_val=0)
