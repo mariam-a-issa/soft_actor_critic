@@ -265,7 +265,7 @@ class Actor(nn.Module):
     
     def _mask_func(self, batch_size : int, logits : Tensor, mask_num : float, num_devices : Tensor) -> Tensor:
         # Create an index tensor for each row, broadcast to match the size of matrix         # [1, 2, 3, ... i]
-        row_indices = torch.arange(logits.size(-1)).unsqueeze(0).expand(batch_size, -1)   # [1, 2, 3  ... i]
+        row_indices = torch.arange(logits.size(-1)).unsqueeze(0).expand(batch_size, -1)      # [1, 2, 3  ... i]
         # Use broadcasting to create a boolean mask                                          # ^  
         num_devices *= self._action_s                                                        # |
         mask = row_indices < num_devices.unsqueeze(1)                                        # |_ Then create a mask of same dimensions as this matrix where True at indicies are less than action size per device times device 
