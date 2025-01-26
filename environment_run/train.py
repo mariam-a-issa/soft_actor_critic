@@ -110,7 +110,7 @@ def train(
         #Got from their config file on how to get sorta of an idea of the size of state and action spaces
         action_space = len(env.action_list)
         s = env.reset()
-        state_space = s.shape[1] - MAGIC_CORP_NUM
+        state_space = s.shape[1] #- MAGIC_CORP_NUM TODO if going to clean put this back in
         dynamic = True
     else:
         action_space = env.action_space.n

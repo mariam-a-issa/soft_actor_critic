@@ -37,7 +37,7 @@ def create_mil_nn_agent(device_size : int,
     for obj in [embedding, q_func, q_func_target, policy]:
         obj.to(device)
     
-    def update() -> Tensor:
+    def update(steps) -> Tensor:
         """Will return tensor of the losses in a tensor of dim 6 in order of Qfunc1, Qfunc2, Actor Loss, Entropy, Alpha Loss, Alpha Value"""
         
         trans = memory.sample()
@@ -78,6 +78,15 @@ def create_mil_nn_agent(device_size : int,
         optim.zero_grad()
         loss.backward()
         optim.step()
+        
+        LearningLogger().log_scalars({'Q1 Mean' : cur_q1.mean(), 
+                                      'Q1 Max' : cur_q1.max(),
+                                      'Q1 Min' : cur_q1.min(),
+                                      'Q1 Std' : cur_q1.std(),
+                                      'Q2 Mean' : cur_q2.mean(), 
+                                      'Q2 Max' : cur_q2.max(),
+                                      'Q2 Min' : cur_q2.min(),
+                                      'Q2 Std' : cur_q2.std()}, steps=steps)
         
         return torch.tensor([
             q1_loss,
@@ -328,7 +337,7 @@ class Agent:
             logging_info = torch.zeros(6)
             
             for _ in range(self._learning_steps):
-                logging_info += self._update_func()
+                logging_info += self._update_func(steps)
                 
             self._log_data(logging_info / self._learning_steps, steps)
             
