@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 import torch
 from torch import tensor, nn, optim, Tensor
 from torch_scatter import segment_coo
@@ -90,7 +92,7 @@ class Actor(nn.Module):
         probs = dist.probs
         return actions, probs, log_probs_reshape
         
-    def evaluate_action(self, embed_states : Tensor, batch_index : Tensor) -> tuple[Tensor, Tensor, Tensor]:
+    def evaluate_action(self, embed_states : Tensor, batch_index : Tensor) -> Tensor:
         """Will find and return the action that has the maximum probability of being choosen
         
             embed_states: a bmxe matrix where b is the batch size, m is the variable size of devices in each part group of the batch and e is the embeding dimension
@@ -102,9 +104,10 @@ class Actor(nn.Module):
         log_probs = self(embed_states, batch_index)
         log_probs_reshape = _reshape(log_probs, batch_index, self._action_dim)
         return torch.argmax(log_probs_reshape, dim=-1)
+
         
    
-class Critic(nn.Module):
+class QModel(nn.Module):
     def __init__(self,
                 embed_dim : int,
                 action_dim : int):
@@ -137,12 +140,46 @@ class Critic(nn.Module):
         
         #Following essentially takes average of all other device q values. We sum every single one and then subtract our own from it and then subtract the total amount of other devices. There is an edge case when there is no other devices.
         #TODO switch to pointer version of segment as segment_coo is non deterministic
-        action_q += ((device_q[:, 1] - segment_coo(device_q[:,1], batch_index, reduce='sum')[batch_index]) / (scaler - 1 + EPS)).view(-1,1) #Need EPS so that I am not deviding by zero when there is no other device. This will still end up being zero since the left hand side will be zero
+        action_q += ((segment_coo(device_q[:,1], batch_index, reduce='sum')[batch_index]- device_q[:, 1]) / (scaler - 1 + EPS)).view(-1,1) #Need EPS so that I am not deviding by zero when there is no other device. This will still end up being zero since the left hand side will be zero
         
         return _reshape(action_q, batch_index, self._action_dim, filler_val=0)
-        
 
-def _reshape(logits : Tensor, batch_index : Tensor, action_dim : int, filler_val : float = float('-inf')) -> Tensor:
+class QFunction(nn.Module):
+    
+    def __init__(self, 
+                 embed_dim : int,
+                 action_dim : int):
+        super().__init__()
+        self._q1 = QModel(embed_dim, action_dim)
+        self._q2 = QModel(embed_dim, action_dim)
+        
+    def forward(self, embed_state : Tensor, batch_index : Tensor, state_index : Tensor) -> tuple[Tensor, Tensor]:
+        q1 = self._q1(embed_state, batch_index, state_index)
+        q2 = self._q2(embed_state, batch_index, state_index)
+        
+        return q1, q2
+    
+class QFunctionTarget():
+    
+    def __init__(self, qfunction : QFunction, tau : float):
+        self._target_q_function = deepcopy(qfunction)
+        self._actual_q_function = qfunction
+        self._tau = tau
+        
+    def __call__(self, *args, **kwds):
+        return torch.min(torch.stack(self._actual_q_function(*args, **kwds), dim=2), dim=2)[0]
+    
+    def update(self):
+        """Will do polyak averaging to each model in the target"""
+        for param, target_param in zip(self._actual_q_function._q1.parameters(), self._target_q_function._q1.parameters()):
+            target_param.data.copy_(self._tau * param.data + (1 - self._tau) * target_param.data)
+        for param, target_param in zip(self._actual_q_function._q2.parameters(), self._target_q_function._q2.parameters()):
+            target_param.data.copy_(self._tau * param.data + (1 - self._tau) * target_param.data)
+    
+    def to(self, device : torch.device):
+        self._target_q_function.to(device)
+
+def _reshape(logits : Tensor, batch_index : Tensor, action_dim : int, filler_val : float = -60) -> Tensor:
     """Will reshape the logits from the form bmxa to bxma where m is the variable about of devices. Since it is variable, the rows will be padded with zeros when necessary
     
     embed_states: a bmxe matrix where b is the batch size, m is the variable size of devices in each part group of the batch and e is the embeding dimension

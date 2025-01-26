@@ -2,7 +2,7 @@ from collections import deque
 from typing import NamedTuple
 import random
 import torch
-from torch import tensor
+from torch import tensor, Tensor
 
 class Transition(NamedTuple):
     "Will be how a single transition of environment is stored"
@@ -12,7 +12,9 @@ class Transition(NamedTuple):
     reward : float
     done : bool
     num_devices : int = None
-    num_devices_n : int = None
+    num_devices_n : int = None,
+    state_index : Tensor = None,
+    next_state_index : Tensor = None
 
 
 class MemoryBuffer:
@@ -64,4 +66,39 @@ class MemoryBuffer:
                                num_devices_n=tensor(trans.next_state.shape[0])
                                )
         
+        self._memory.append(trans)
+
+
+class DynamicMemoryBuffer():
+    """Replay buffer where due to the dynamic size of the state, part of the state is collpased into the batch dim"""
+    
+    def __init__(self, buffer_length : int, sample_size : int, random : random) -> None:
+        self._memory = deque(maxlen=buffer_length)
+        self._sample_size = sample_size
+        self._random = random
+    
+    def sample(self) -> Transition:
+        if len(self._memory) <= self._sample_size:
+            sample = self._memory #sample will be a list of transitions
+        else:
+            sample = self._random.sample(self._memory, self._sample_size)
+
+        state, action, next_state, reward, done, _, _, _, _ = zip(*sample)
+        
+        state_index = torch.tensor([0]+[state[i - 1].shape[0] for i in range(1, len(state))]+ [state[-1].shape[0]])
+        next_state_index = torch.tensor([0]+[next_state[i - 1].shape[0] for i in range(1, len(next_state))]+ [next_state[-1].shape[0]])
+        
+        state_index = torch.cumsum(state_index, dim=0)
+        next_state_index = torch.cumsum(next_state_index, dim = 0)
+        
+        state = torch.cat(state, dim=0)
+        next_state = torch.cat(next_state, dim=0)
+        
+        action = torch.stack(action, dim = 0)
+        reward = torch.stack(reward, dim =0)
+        done = torch.stack(done, dim = 0)
+        
+        return Transition(state=state, action=action, next_state=next_state, reward=reward, done=done, num_devices=None, num_devices_n=None, state_index=state_index, next_state_index=next_state_index)    
+    
+    def add_data(self, trans : Transition) -> None:
         self._memory.append(trans)

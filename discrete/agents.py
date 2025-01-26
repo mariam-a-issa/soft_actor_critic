@@ -1,10 +1,120 @@
 from typing import Callable
+import random
 
 from torch import Tensor, tensor
 import torch
 
-from utils import MemoryBuffer, Transition, LearningLogger, MAX_ROWS
-from . import nn, hdc
+from utils import MemoryBuffer, Transition, LearningLogger, MAX_ROWS, DynamicMemoryBuffer
+from . import nn, hdc, mil_nn, sac
+
+
+def create_mil_nn_agent(device_size : int,
+                 action_size : int,
+                 embed_size : int,
+                 pos_encode_size : int,
+                 policy_lr : float,
+                 critic_lr : float,
+                 alpha_lr : float,
+                 discount : float,
+                 tau : float,
+                 alpha_value : float,
+                 target_update : int, #When the target should update
+                 update_frequency : int, #When the models should update,
+                 learning_steps : int, #Amount of gradient steps
+                 device : torch.device,
+                 buffer_length : int,
+                 sample_size : int,
+                 random : random):
+    
+    embedding = mil_nn.Embedding(embed_size, pos_encode_size, device_size)
+    q_func = mil_nn.QFunction(embed_size, action_size)
+    q_func_target = mil_nn.QFunctionTarget(q_func, tau)
+    policy = mil_nn.Actor(embed_size, action_size)
+    
+    optim = torch.optim.Adam([*embedding.parameters(), *q_func.parameters(), *policy.parameters()], lr=policy_lr)
+    memory = DynamicMemoryBuffer(buffer_length, sample_size, random)
+    
+    for obj in [embedding, q_func, q_func_target, policy]:
+        obj.to(device)
+    
+    def update() -> Tensor:
+        """Will return tensor of the losses in a tensor of dim 6 in order of Qfunc1, Qfunc2, Actor Loss, Entropy, Alpha Loss, Alpha Value"""
+        
+        trans = memory.sample()
+        
+        cur_state_embed, cur_batch_index = embedding(trans.state, trans.state_index)
+
+        cur_q1, cur_q2 = q_func(cur_state_embed, cur_batch_index, trans.state_index)
+        _, cur_prob, cur_log_prob = policy.sample_action(cur_state_embed, cur_batch_index)
+        
+        with torch.no_grad():
+            cur_q_target = q_func_target(cur_state_embed, cur_batch_index, trans.state_index)
+            
+            next_state_embed, next_batch_index = embedding(trans.next_state, trans.next_state_index)
+            next_q_target = q_func_target(next_state_embed, next_batch_index, trans.next_state_index)
+            _, next_prob, next_log_prob = policy.sample_action(next_state_embed, next_batch_index)
+            
+            batch_size, action_size = cur_prob.shape
+            
+            ent = -torch.bmm(cur_prob.view(batch_size, 1, action_size),
+                            cur_log_prob.view(batch_size, action_size, 1)).mean()
+        
+        policy_loss = sac.policy_loss(cur_q_target, cur_prob, cur_log_prob, alpha_value).mean().squeeze()
+        q1_dif, q2_dif = sac.q_func_loss(cur_q1, 
+                                         cur_q2,
+                                         next_q_target,
+                                         trans.action,
+                                         next_prob,
+                                         next_log_prob,
+                                         trans.reward,
+                                         alpha_value,
+                                         discount,
+                                         trans.done)
+        q1_loss = sac.mse(q1_dif)
+        q2_loss = sac.mse(q2_dif)
+        
+        loss = policy_loss + q1_loss + q2_loss
+        
+        optim.zero_grad()
+        loss.backward()
+        optim.step()
+        
+        return torch.tensor([
+            q1_loss,
+            q2_loss,
+            policy_loss,
+            ent,
+            0,
+            alpha_value
+        ]).to(device)
+    
+    def call(state : Tensor) -> Tensor:
+        with torch.no_grad():
+            embed_state, batch_index = embedding(state, torch.tensor([0,state.shape[0]]))
+            action, _, _ = policy.sample_action(embed_state, batch_index)
+            return action
+        
+    def evaluate(state : Tensor) -> Tensor:
+        with torch.no_grad():
+            embed_state, batch_index = embedding(state, torch.tensor([0, state.shape[0]]))
+            action = policy.evaluate_action(embed_state, batch_index)
+            return action
+        
+    def add_data(trans : Transition) -> None:
+        memory.add_data(trans)
+        
+    return Agent(
+        target_update,
+        update_frequency,
+        learning_steps,
+        update,
+        call,
+        q_func_target.update,
+        lambda x : None,
+        evaluate,
+        add_data
+    )
+            
 
 def create_nn_agent(input_size : int,
                  output_size : int,
@@ -190,7 +300,8 @@ class Agent:
                  action_func : Callable[[Tensor], Tensor],
                  target_update_func : Callable[[], None],
                  save_actor_func : Callable[[str], None],
-                 evaluate_func : Callable[[Tensor], Tensor]):
+                 evaluate_func : Callable[[Tensor], Tensor],
+                 add_data : Callable[[Transition], None]):
         
         self._learning_steps = learning_steps
         self._update_frequency = update_frequency
@@ -202,20 +313,22 @@ class Agent:
         self._save_actor_func = save_actor_func
         self._evaluate_func = evaluate_func
         
+        self._add_data = add_data
+        
     def __call__(self, state : Tensor) -> Tensor:
         return self._action_func(state)
     
     def evaluate(self, state : Tensor) -> Tensor:
         return self._evaluate_func(state)
     
-    def update(self, buffer : MemoryBuffer, steps : int) -> None:
+    def update(self, steps : int) -> None:
         """Will perform the approaite update for the agent given the specific amount of steps"""
         if steps % self._update_frequency == 0:
             
             logging_info = torch.zeros(6)
             
             for _ in range(self._learning_steps):
-                logging_info += self._update_func(buffer.sample())
+                logging_info += self._update_func()
                 
             self._log_data(logging_info / self._learning_steps, steps)
             
@@ -225,6 +338,10 @@ class Agent:
     def save_actor(self, extension : str) -> None:
         """Will save the actor weights with the given extension"""
         self._save_actor_func(f'actor_weights{extension}.pt')
+        
+    def add_data(self, trans : Transition) -> None:
+        """Will save the transition to memory"""
+        self._add_data(trans)
 
     def _log_data(self, logging_info : Tensor, steps : int) -> None:
         """Will log the training data"""

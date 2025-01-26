@@ -12,7 +12,7 @@ from numpy.typing import NDArray
 #import gymnasium
 import gym
 
-from discrete import create_hdc_agent, create_nn_agent
+from discrete import create_hdc_agent, create_nn_agent, create_mil_nn_agent
 from utils import MemoryBuffer, Transition, LearningLogger
 from .evaluate import evaluate
 from .helpers import convert_int_action, clean_state
@@ -20,7 +20,8 @@ from .helpers import convert_int_action, clean_state
 #Hyperparameters
 
 LR = 3e-4
-HIDDEN_LAYER_SIZE = 256
+HIDDEN_LAYER_SIZE = 256 #They use 64
+POS_ENC_SIZE = 8
 HYPER_VEC_DIM = 2048
 POLICY_LR = LR
 CRITIC_LR = LR
@@ -51,6 +52,7 @@ def train(
         group_name : str = '', #Groups of various experiments
         job_name : str = '',   #Individual jobs in the experiment
         hidden_size : int = HIDDEN_LAYER_SIZE,
+        pos_enc_size : int = POS_ENC_SIZE,
         policy_lr : float = POLICY_LR,
         critic_lr : float = CRITIC_LR,
         alpha_lr : float = ALPHA_LR,
@@ -65,6 +67,7 @@ def train(
         sample_size : int = SAMPLE_SIZE,
         max_steps : int = MAX_STEPS,
         hdc_agent : bool = False,
+        mil_agent : bool = True,
         hypervec_dim : int = HYPER_VEC_DIM,
         environment_info : dict = {'id' : 'LunarLander-v2'}, #Currently using gym as nasimemu uses gym
         seed : int = None,
@@ -129,43 +132,63 @@ def train(
 
     torch.set_default_device(device_obj)
 
-    
-    if hdc_agent:
-        agent = create_hdc_agent(
+    if mil_agent:
+        agent = create_mil_nn_agent(
             state_space,
             action_space,
-            hypervec_dim,
-            policy_lr,
-            critic_lr,
-            discount,
-            tau,
-            alpha_value,
-            autotune,
-            target_update,
-            update_frequency,
-            learning_steps,
-            device_obj,
-            dynamic  
-        )
-    else:
-        agent = create_nn_agent(
-            state_space,
-            action_space,
-            hidden_size,
+            hidden_size, 
+            pos_enc_size,
             policy_lr,
             critic_lr,
             alpha_lr,
             discount,
             tau,
             alpha_value,
-            autotune,
             target_update,
             update_frequency,
             learning_steps,
             device_obj,
-            dynamic,
-            grad_clip
+            buffer_size,
+            sample_size,
+            random  
         )
+    else:
+        if hdc_agent:
+            agent = create_hdc_agent(
+                state_space,
+                action_space,
+                hypervec_dim,
+                policy_lr,
+                critic_lr,
+                discount,
+                tau,
+                alpha_value,
+                autotune,
+                target_update,
+                update_frequency,
+                learning_steps,
+                device_obj,
+                dynamic  
+            )
+        else:
+            agent = create_nn_agent(
+                state_space,
+                action_space,
+                hidden_size,
+                policy_lr,
+                critic_lr,
+                alpha_lr,
+                discount,
+                tau,
+                alpha_value,
+                autotune,
+                target_update,
+                update_frequency,
+                learning_steps,
+                device_obj,
+                dynamic,
+                grad_clip
+            )
 
     steps = 0
     num_epi = 0
@@ -201,10 +224,10 @@ def train(
             
             epi_reward += reward
 
-            buffer.add_data(trans)
+            agent.add_data(trans)
             
             if explore_steps <= steps:
-                agent.update(buffer, steps)
+                agent.update(steps)
 
             steps += 1
 
@@ -220,6 +243,7 @@ def train(
 
             state = next_state
     except Exception as e:
+        print(e)
         raise e
     
     finally:

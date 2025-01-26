@@ -3,17 +3,19 @@ import os
 
 from environment_run import train
 
-MAIN_EXPERIMENT_NAME = 'nasimemu_nn_corpv2_stp100_aug'
+MAIN_EXPERIMENT_NAME = 'test'
 NUM_RUNS = 1
 OTHER_HPARAMS = { #Just the default params that may be different than the ones in the training file
     'hdc_agent' : False,
+    'mil_agent' : True,
     'alpha_value' : .4, #The tempurature coefficient or scaling factor for the target entropy when autotuning 
     'autotune' : False,
     'alpha_lr' : 3e-4,
     'critic_lr' : 3e-4,
     'policy_lr' : 3e-4,
     'hypervec_dim' : 4096,
-    'hidden_size' : [4096, 2048, 1024],
+    'hidden_size' : 64,
+    'pos_enc_size' : 8,
     'grad_clip' : 1.0,
     'sample_size' : 64,
     'tau' : .005,
@@ -23,12 +25,12 @@ OTHER_HPARAMS = { #Just the default params that may be different than the ones i
     'buffer_size' : 10 ** 6,
     'learning_steps' : 1,
     'update_frequency' : 1,
-    'environment_info' : {'id' : 'NASimEmu-v0', 'emulate' : False, 'scenario_name' : '/home/mariamai/projects/hd_sac/NASimEmu/scenarios/corp.v2.yaml', 'step_limit' : 100, 'augment_with_action' : True},
+    'environment_info' : {'id' : 'NASimEmu-v0', 'emulate' : False, 'scenario_name' : '/home/ian/projects/hd_sac/NASimEmu/scenarios/corp.v2.yaml', 'step_limit' : 100, 'augment_with_action' : True},
     'max_steps' : 200000,
     'eval_frequency' : 10,
     'num_evals' : 5,
     'tensorboard' : True,
-    'wandb' : True,
+    'wandb' : False,
     'dynamic' : True
 }
 
