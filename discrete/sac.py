@@ -4,7 +4,7 @@ from torch import Tensor
 def policy_loss(q_target : Tensor,
                 action_probs : Tensor,
                 action_log_probs : Tensor,
-                alpha : float):
+                alpha : float) -> Tensor:
     """Will calcuate the loss for the policy
         q_target : batch_size x action 
         action_probs : batch_size x action 

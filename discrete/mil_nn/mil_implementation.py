@@ -8,7 +8,7 @@ import torch.nn.functional as F
 from torch.distributions import Categorical
 
 from .architecture import positional_encoding
-from utils import EPS
+from utils import EPS, LearningLogger
 
 class Embedding(nn.Module):
     
@@ -70,7 +70,7 @@ class Actor(nn.Module):
         if b == 1:
             log_prob_dev = F.log_softmax(device_select, dim=-1)
         else:
-            log_prob_dev = scatter_log_softmax(device_select.squeeze(), batch_index).view(-1,1)
+            log_prob_dev = scatter_log_softmax(device_select.squeeze(), batch_index.squeeze()).view(-1,1)
         log_prob_act = F.log_softmax(action_select, dim=-1)
         
         return log_prob_act + log_prob_dev #Using rules of logs to have log(p_a * p_d) = log(p_a) + log(p_d)
@@ -87,7 +87,7 @@ class Actor(nn.Module):
         
         log_probs = self(embed_states, batch_index)
         log_probs_reshape = _reshape(log_probs, batch_index, self._action_dim)
-        dist = Categorical(probs=torch.exp(log_probs_reshape))
+        dist = Categorical(logits=log_probs_reshape)
         actions = dist.sample()
         probs = dist.probs
         return actions, probs, log_probs_reshape
@@ -116,7 +116,7 @@ class QModel(nn.Module):
         self._action_q = nn.Sequential(nn.Linear(2 * embed_dim, embed_dim), nn.ReLU(), nn.Linear(embed_dim, action_dim))
         self._action_dim = action_dim
         
-    def forward(self, embed_state : Tensor, batch_index : Tensor, state_index : Tensor) -> Tensor:
+    def forward(self, embed_state : Tensor, batch_index : Tensor, state_index : Tensor, description : str = None) -> Tensor:
         """Will calculate the Q value for each action on every device passed in
 
             Will first calculate the Q value of choosing the action on the device and not choosing an aciton on the device
@@ -138,9 +138,15 @@ class QModel(nn.Module):
         
         scaler = torch.tensor([state_index[i + 1] - state_index[i] for i in range(len(state_index) - 1)])[batch_index]
         
-        #Following essentially takes average of all other device q values. We sum every single one and then subtract our own from it and then subtract the total amount of other devices. There is an edge case when there is no other devices.
+        #Following essentially takes average of all other device q values. We sum every single one and then subtract our own from it and then divide the total amount of other devices. There is an edge case when there is no other devices.
         #TODO switch to pointer version of segment as segment_coo is non deterministic
-        action_q += ((segment_coo(device_q[:,1], batch_index, reduce='sum')[batch_index]- device_q[:, 1]) / (scaler - 1 + EPS)).view(-1,1) #Need EPS so that I am not deviding by zero when there is no other device. This will still end up being zero since the left hand side will be zero
+        action_q += ((segment_coo(device_q[:,1], batch_index, reduce='sum')[batch_index]- device_q[:, 1]) / (scaler - 1 + EPS)).view(-1,1) #Need EPS so that I am not dividing by zero when there is no other device. This will still end up being zero since the left hand side will be zero
+        
+        if description:
+            LearningLogger().log_scalars({f'{description} Mean' : action_q.mean(), 
+                                      f'{description} Max' : action_q.max(),
+                                      f'{description} Min' : action_q.min(),
+                                      f'{description} Std' : action_q.std()}, steps=LearningLogger().cur_step())
         
         return _reshape(action_q, batch_index, self._action_dim, filler_val=0)
 
@@ -154,8 +160,8 @@ class QFunction(nn.Module):
         self._q2 = QModel(embed_dim, action_dim)
         
     def forward(self, embed_state : Tensor, batch_index : Tensor, state_index : Tensor) -> tuple[Tensor, Tensor]:
-        q1 = self._q1(embed_state, batch_index, state_index)
-        q2 = self._q2(embed_state, batch_index, state_index)
+        q1 = self._q1(embed_state, batch_index, state_index, description='Q1')
+        q2 = self._q2(embed_state, batch_index, state_index, description='Q2')
         
         return q1, q2
     
@@ -179,7 +185,7 @@ class QFunctionTarget():
     def to(self, device : torch.device):
         self._target_q_function.to(device)
 
-def _reshape(logits : Tensor, batch_index : Tensor, action_dim : int, filler_val : float = -60) -> Tensor:
+def _reshape(logits : Tensor, batch_index : Tensor, action_dim : int, filler_val : float = -1e8) -> Tensor:
     """Will reshape the logits from the form bmxa to bxma where m is the variable about of devices. Since it is variable, the rows will be padded with zeros when necessary
     
     embed_states: a bmxe matrix where b is the batch size, m is the variable size of devices in each part group of the batch and e is the embeding dimension

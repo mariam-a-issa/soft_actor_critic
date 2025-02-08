@@ -150,6 +150,7 @@ def train(
             device_obj,
             buffer_size,
             sample_size,
+            grad_clip,
             random  
         )
     else:

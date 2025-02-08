@@ -34,6 +34,8 @@ class LearningLogger:
         else:
             self._loggers['wandb'] = None
             
+        self._cur_step = 0
+            
     def add_x_axis_metric_labels(self, metrics_labels : dict[str : list[str]]) -> None:
         """Will create labels for specific metrics that are different from the standard 'step'
         
@@ -61,8 +63,14 @@ class LearningLogger:
             if episodes is not None:
                 data['Episode'] = episodes
             self._loggers['wandb'].log(data, step=steps)
+        
+        if steps:
+            self._cur_step = steps
             
-            
+    def cur_step(self)->int:
+        """Will return roughly the current step"""
+        return self._cur_step
+    
     def close(self) -> None:
         """Will close the logger writing any additional information that is needed"""
         

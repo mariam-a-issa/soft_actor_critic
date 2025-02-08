@@ -3,6 +3,7 @@ import random
 
 from torch import Tensor, tensor
 import torch
+from torch.nn import utils
 
 from utils import MemoryBuffer, Transition, LearningLogger, MAX_ROWS, DynamicMemoryBuffer
 from . import nn, hdc, mil_nn, sac
@@ -24,6 +25,7 @@ def create_mil_nn_agent(device_size : int,
                  device : torch.device,
                  buffer_length : int,
                  sample_size : int,
+                 clip_norm_value : float,
                  random : random):
     
     embedding = mil_nn.Embedding(embed_size, pos_encode_size, device_size)
@@ -43,21 +45,23 @@ def create_mil_nn_agent(device_size : int,
         trans = memory.sample()
         
         cur_state_embed, cur_batch_index = embedding(trans.state, trans.state_index)
-
         cur_q1, cur_q2 = q_func(cur_state_embed, cur_batch_index, trans.state_index)
         _, cur_prob, cur_log_prob = policy.sample_action(cur_state_embed, cur_batch_index)
-        
+        number_devices = torch.diff(trans.state_index)
+        cur_log_prob = cur_log_prob / torch.log(number_devices * action_size).view(-1, 1) #Normilize by the maximum possible entropy
         with torch.no_grad():
             cur_q_target = q_func_target(cur_state_embed, cur_batch_index, trans.state_index)
             
             next_state_embed, next_batch_index = embedding(trans.next_state, trans.next_state_index)
             next_q_target = q_func_target(next_state_embed, next_batch_index, trans.next_state_index)
             _, next_prob, next_log_prob = policy.sample_action(next_state_embed, next_batch_index)
+            next_log_prob = next_log_prob / torch.log(number_devices * action_size).view(-1, 1) 
+            batch_size, cur_action_size = cur_prob.shape
             
-            batch_size, action_size = cur_prob.shape
-            
-            ent = -torch.bmm(cur_prob.view(batch_size, 1, action_size),
-                            cur_log_prob.view(batch_size, action_size, 1)).mean()
+            ent = -torch.bmm(cur_prob.view(batch_size, 1, cur_action_size),
+                            cur_log_prob.view(batch_size, cur_action_size, 1)).mean()
+        
+        #Normilize entropy
         
         policy_loss = sac.policy_loss(cur_q_target, cur_prob, cur_log_prob, alpha_value).mean().squeeze()
         q1_dif, q2_dif = sac.q_func_loss(cur_q1, 
@@ -77,16 +81,12 @@ def create_mil_nn_agent(device_size : int,
         
         optim.zero_grad()
         loss.backward()
+        
+        utils.clip_grad_norm_(q_func._q1.parameters(), clip_norm_value)
+        utils.clip_grad_norm_(q_func._q2.parameters(), clip_norm_value)
+        
         optim.step()
         
-        LearningLogger().log_scalars({'Q1 Mean' : cur_q1.mean(), 
-                                      'Q1 Max' : cur_q1.max(),
-                                      'Q1 Min' : cur_q1.min(),
-                                      'Q1 Std' : cur_q1.std(),
-                                      'Q2 Mean' : cur_q2.mean(), 
-                                      'Q2 Max' : cur_q2.max(),
-                                      'Q2 Min' : cur_q2.min(),
-                                      'Q2 Std' : cur_q2.std()}, steps=steps)
         
         return torch.tensor([
             q1_loss,
