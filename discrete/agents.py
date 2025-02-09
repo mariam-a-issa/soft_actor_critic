@@ -1,5 +1,6 @@
-from typing import Callable
+from typing import Callable, Iterable
 import random
+from copy import deepcopy
 
 from torch import Tensor, tensor
 import torch
@@ -28,15 +29,18 @@ def create_mil_nn_agent(device_size : int,
                  clip_norm_value : float,
                  random : random):
     
-    embedding = mil_nn.Embedding(embed_size, pos_encode_size, device_size)
+    q_embedding = mil_nn.Embedding(embed_size, pos_encode_size, device_size)
+    target_q_embedding = deepcopy(q_embedding)
+    policy_embedding = mil_nn.Embedding(embed_size, pos_encode_size, device_size)
     q_func = mil_nn.QFunction(embed_size, action_size)
     q_func_target = mil_nn.QFunctionTarget(q_func, tau)
     policy = mil_nn.Actor(embed_size, action_size)
     
-    optim = torch.optim.Adam([*embedding.parameters(), *q_func.parameters(), *policy.parameters()], lr=policy_lr)
+    optim_critic = torch.optim.Adam([*q_embedding.parameters(), *q_func.parameters()], lr=critic_lr)
+    optim_policy = torch.optim.Adam([*policy_embedding.parameters(), *policy.parameters()], lr=policy_lr)
     memory = DynamicMemoryBuffer(buffer_length, sample_size, random)
     
-    for obj in [embedding, q_func, q_func_target, policy]:
+    for obj in [q_embedding, policy_embedding, q_func, q_func_target, policy]:
         obj.to(device)
     
     def update(steps) -> Tensor:
@@ -44,24 +48,31 @@ def create_mil_nn_agent(device_size : int,
         
         trans = memory.sample()
         
-        cur_state_embed, cur_batch_index = embedding(trans.state, trans.state_index)
-        cur_q1, cur_q2 = q_func(cur_state_embed, cur_batch_index, trans.state_index)
-        _, cur_prob, cur_log_prob = policy.sample_action(cur_state_embed, cur_batch_index)
+        q_cur_state_embed, q_cur_batch_index = q_embedding(trans.state, trans.state_index)
+        policy_cur_state_embed, policy_cur_batch_index = policy_embedding(trans.state, trans.state_index)
+        
+        cur_q1, cur_q2 = q_func(q_cur_state_embed, q_cur_batch_index, trans.state_index)
+        _, cur_prob, cur_log_prob = policy.sample_action(policy_cur_state_embed, policy_cur_batch_index)
+        
         number_devices = torch.diff(trans.state_index)
         cur_log_prob = cur_log_prob / torch.log(number_devices * action_size).view(-1, 1) #Normilize by the maximum possible entropy
+        
         with torch.no_grad():
-            cur_q_target = q_func_target(cur_state_embed, cur_batch_index, trans.state_index)
+            tar_q_cur_state_embed, tar_q_cur_batch_index = target_q_embedding(trans.state, trans.state_index)
+            cur_q_target = q_func_target(tar_q_cur_state_embed, tar_q_cur_batch_index, trans.state_index)
             
-            next_state_embed, next_batch_index = embedding(trans.next_state, trans.next_state_index)
-            next_q_target = q_func_target(next_state_embed, next_batch_index, trans.next_state_index)
-            _, next_prob, next_log_prob = policy.sample_action(next_state_embed, next_batch_index)
-            next_log_prob = next_log_prob / torch.log(number_devices * action_size).view(-1, 1) 
+            q_next_state_embed, q_next_batch_index = target_q_embedding(trans.next_state, trans.next_state_index)
+            policy_next_state_embed, policy_next_batch_index = policy_embedding(trans.next_state, trans.next_state_index)
+            
+            next_q_target = q_func_target(q_next_state_embed, q_next_batch_index, trans.next_state_index)
+            _, next_prob, next_log_prob = policy.sample_action(policy_next_state_embed, policy_next_batch_index)
+            
+            next_log_prob = next_log_prob / torch.log(number_devices * action_size).view(-1, 1) #Normilize by the maximum possible entropy
             batch_size, cur_action_size = cur_prob.shape
             
             ent = -torch.bmm(cur_prob.view(batch_size, 1, cur_action_size),
                             cur_log_prob.view(batch_size, cur_action_size, 1)).mean()
         
-        #Normilize entropy
         
         policy_loss = sac.policy_loss(cur_q_target, cur_prob, cur_log_prob, alpha_value).mean().squeeze()
         q1_dif, q2_dif = sac.q_func_loss(cur_q1, 
@@ -77,16 +88,23 @@ def create_mil_nn_agent(device_size : int,
         q1_loss = sac.mse(q1_dif)
         q2_loss = sac.mse(q2_dif)
         
-        loss = policy_loss + q1_loss + q2_loss
+        optim_policy.zero_grad()
+        policy_loss.backward()
+        optim_policy.step()
         
-        optim.zero_grad()
-        loss.backward()
+        critic_loss = q1_loss + q2_loss
         
-        utils.clip_grad_norm_(q_func._q1.parameters(), clip_norm_value)
-        utils.clip_grad_norm_(q_func._q2.parameters(), clip_norm_value)
+        optim_critic.zero_grad()
+        critic_loss.backward()
         
-        optim.step()
+        LearningLogger().log_scalars({'Grad of Policy' : _calc_grad_norm([*policy_embedding.parameters(), *policy.parameters()]),
+                                      'Unclipped Grad of Q Function' : _calc_grad_norm([*q_embedding.parameters(), *q_func.parameters()])},
+                                      steps=steps)
         
+        utils.clip_grad_norm_([*q_embedding.parameters(), *q_func.parameters()], clip_norm_value)
+        
+        optim_policy.step()
+        optim_critic.step()
         
         return torch.tensor([
             q1_loss,
@@ -96,16 +114,20 @@ def create_mil_nn_agent(device_size : int,
             0,
             alpha_value
         ]).to(device)
-    
+        
+    def target_update_func():
+        q_func_target.update()
+        _polyak_average(q_embedding.parameters(), target_q_embedding.parameters(), tau)
+        
     def call(state : Tensor) -> Tensor:
         with torch.no_grad():
-            embed_state, batch_index = embedding(state, torch.tensor([0,state.shape[0]]))
+            embed_state, batch_index = policy_embedding(state, torch.tensor([0,state.shape[0]]))
             action, _, _ = policy.sample_action(embed_state, batch_index)
             return action
         
     def evaluate(state : Tensor) -> Tensor:
         with torch.no_grad():
-            embed_state, batch_index = embedding(state, torch.tensor([0, state.shape[0]]))
+            embed_state, batch_index = policy_embedding(state, torch.tensor([0, state.shape[0]]))
             action = policy.evaluate_action(embed_state, batch_index)
             return action
         
@@ -118,7 +140,7 @@ def create_mil_nn_agent(device_size : int,
         learning_steps,
         update,
         call,
-        q_func_target.update,
+        target_update_func,
         lambda x : None,
         evaluate,
         add_data
@@ -367,4 +389,19 @@ class Agent:
         }
         
         logger.log_scalars(log_dict, steps=steps)
+    
+    
+def _calc_grad_norm(parameters : Iterable[Tensor]) -> Tensor:
+    """Will calculate the gradient norm of the parameters"""
+    total_norm = 0
+    for p in parameters:
+        param_norm = p.grad.detach().data.norm(2)
+        total_norm += param_norm.item() ** 2
+    return total_norm ** 0.5
+    
+    
+def _polyak_average(actual_params : Iterable[Tensor], target_params : Iterable[Tensor], tau) -> None:
+    """Will do a polyak average"""
+    for param, target_param in zip(actual_params, target_params):
+            target_param.data.copy_(tau * param.data + (1 - tau) * target_param.data)
     

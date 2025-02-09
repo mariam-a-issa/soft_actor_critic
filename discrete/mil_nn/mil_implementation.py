@@ -112,7 +112,7 @@ class QModel(nn.Module):
                 embed_dim : int,
                 action_dim : int):
         super().__init__()
-        self._device_q = nn.Sequential(nn.Linear(2 * embed_dim, embed_dim), nn.ReLU(), nn.Linear(embed_dim, 2))
+        self._device_q = nn.Sequential(nn.Linear(2 * embed_dim, embed_dim), nn.ReLU(), nn.Linear(embed_dim, 1))
         self._action_q = nn.Sequential(nn.Linear(2 * embed_dim, embed_dim), nn.ReLU(), nn.Linear(embed_dim, action_dim))
         self._action_dim = action_dim
         
@@ -131,16 +131,16 @@ class QModel(nn.Module):
            return: A bx(max_d * a) tensor where each element corresponds to the Q value of that specific device with zeroed out 
         """
         
-        device_q : Tensor = self._device_q(embed_state) # bmx2 first index choose device second index choose other devicess
+        device_q : Tensor = self._device_q(embed_state) # bmx1 first index choose device second index choose other devicess
         action_q : Tensor = self._action_q(embed_state) # bmxa
         
         action_q += device_q[:,0].view(-1,1)
         
-        scaler = torch.tensor([state_index[i + 1] - state_index[i] for i in range(len(state_index) - 1)])[batch_index]
+        #scaler = torch.tensor([state_index[i + 1] - state_index[i] for i in range(len(state_index) - 1)])[batch_index]
         
         #Following essentially takes average of all other device q values. We sum every single one and then subtract our own from it and then divide the total amount of other devices. There is an edge case when there is no other devices.
         #TODO switch to pointer version of segment as segment_coo is non deterministic
-        action_q += ((segment_coo(device_q[:,1], batch_index, reduce='sum')[batch_index]- device_q[:, 1]) / (scaler - 1 + EPS)).view(-1,1) #Need EPS so that I am not dividing by zero when there is no other device. This will still end up being zero since the left hand side will be zero
+        #action_q += ((segment_coo(device_q[:,1], batch_index, reduce='sum')[batch_index]- device_q[:, 1]) / (scaler - 1 + EPS)).view(-1,1) #Need EPS so that I am not dividing by zero when there is no other device. This will still end up being zero since the left hand side will be zero
         
         if description:
             LearningLogger().log_scalars({f'{description} Mean' : action_q.mean(), 

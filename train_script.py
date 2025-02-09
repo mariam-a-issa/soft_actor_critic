@@ -3,7 +3,7 @@ import os
 
 from environment_run import train
 
-MAIN_EXPERIMENT_NAME = 'nasimemu-mil-alpha-stp100-aug-no-clean-id-med-norm-ent-clip-q'
+MAIN_EXPERIMENT_NAME = 'nasimemu-mil-alpha-stp100-aug-no-clean-id-med-norm-ent-clip-q-no-sub-q-seperate-encoders'
 NUM_RUNS = 1
 OTHER_HPARAMS = { #Just the default params that may be different than the ones in the training file
     'hdc_agent' : False,
@@ -16,7 +16,7 @@ OTHER_HPARAMS = { #Just the default params that may be different than the ones i
     'hypervec_dim' : 4096,
     'hidden_size' : 64,
     'pos_enc_size' : 8,
-    'grad_clip' : 1.0,
+    'grad_clip' : 5,
     'sample_size' : 64,
     'tau' : .005,
     'target_update' : 1,
@@ -25,14 +25,13 @@ OTHER_HPARAMS = { #Just the default params that may be different than the ones i
     'buffer_size' : 10 ** 6,
     'learning_steps' : 1,
     'update_frequency' : 1,
-    'environment_info' : {'id' : 'NASimEmu-v0', 'emulate' : False, 'scenario_name' : '/home/ian/projects/hd_sac/NetworkAttackSimulator/nasim/scenarios/benchmark/medium.yaml', 'step_limit' : 100, 'augment_with_action' : True},
+    'environment_info' : {'id' : 'NASimEmu-v0', 'emulate' : False, 'scenario_name' : '/home/mariamai/projects/hd_sac/NetworkAttackSimulator/nasim/scenarios/benchmark/medium.yaml', 'step_limit' : 100, 'augment_with_action' : True},
     'max_steps' : 200000,
     'eval_frequency' : 10,
     'num_evals' : 5,
     'tensorboard' : False,
     'wandb' : True,
     'dynamic' : True,
-    'grad_clip' : 5
 }
 
 def train_hyper_param(name : str, values : list[float], seeds : list[int]):
@@ -58,4 +57,4 @@ def train_hyper_param(name : str, values : list[float], seeds : list[int]):
 
 if __name__ == '__main__':
     os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8' #Needed since training will have to be deterministic. More info at https://docs.nvidia.com/cuda/cublas/index.html#cublasApi_reproducibility
-    train_hyper_param('alpha_value', [1.2], [0, 1, 2])
+    train_hyper_param('alpha_value', [3], [0, 1, 2])
