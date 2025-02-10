@@ -27,6 +27,12 @@ def create_mil_nn_agent(device_size : int,
                  buffer_length : int,
                  sample_size : int,
                  clip_norm_value : float,
+                 target_ent_start : float,
+                 target_ent_end : float,
+                 alpha_slope : float,
+                 midpoint : float,
+                 max_steps : float,
+                 autotune : bool,
                  random : random):
     
     q_embedding = mil_nn.Embedding(embed_size, pos_encode_size, device_size)
@@ -35,12 +41,14 @@ def create_mil_nn_agent(device_size : int,
     q_func = mil_nn.QFunction(embed_size, action_size)
     q_func_target = mil_nn.QFunctionTarget(q_func, tau)
     policy = mil_nn.Actor(embed_size, action_size)
+    alpha = mil_nn.Alpha(target_ent_start, target_ent_end, midpoint, alpha_slope, max_steps, autotune, alpha_value)
     
     optim_critic = torch.optim.Adam([*q_embedding.parameters(), *q_func.parameters()], lr=critic_lr)
     optim_policy = torch.optim.Adam([*policy_embedding.parameters(), *policy.parameters()], lr=policy_lr)
+    optim_alpha = torch.optim.Adam([alpha._log_alpha], lr = alpha_lr)
     memory = DynamicMemoryBuffer(buffer_length, sample_size, random)
     
-    for obj in [q_embedding, policy_embedding, q_func, q_func_target, policy]:
+    for obj in [q_embedding, policy_embedding, q_func, q_func_target, policy, alpha]:
         obj.to(device)
     
     def update(steps) -> Tensor:
@@ -74,7 +82,7 @@ def create_mil_nn_agent(device_size : int,
                             cur_log_prob.view(batch_size, cur_action_size, 1)).mean()
         
         
-        policy_loss = sac.policy_loss(cur_q_target, cur_prob, cur_log_prob, alpha_value).mean().squeeze()
+        policy_loss = sac.policy_loss(cur_q_target, cur_prob, cur_log_prob, alpha()).mean().squeeze()
         q1_dif, q2_dif = sac.q_func_loss(cur_q1, 
                                          cur_q2,
                                          next_q_target,
@@ -82,9 +90,14 @@ def create_mil_nn_agent(device_size : int,
                                          next_prob,
                                          next_log_prob,
                                          trans.reward,
-                                         alpha_value,
+                                         alpha(),
                                          discount,
                                          trans.done)
+        alpha_loss = sac.alpha_loss(cur_prob,
+                                    cur_log_prob,
+                                    alpha(),
+                                    alpha.sigmoid_target_entropy(steps))
+        
         q1_loss = sac.mse(q1_dif)
         q2_loss = sac.mse(q2_dif)
         
@@ -101,18 +114,22 @@ def create_mil_nn_agent(device_size : int,
                                       'Unclipped Grad of Q Function' : _calc_grad_norm([*q_embedding.parameters(), *q_func.parameters()])},
                                       steps=steps)
         
-        utils.clip_grad_norm_([*q_embedding.parameters(), *q_func.parameters()], clip_norm_value)
+        #utils.clip_grad_norm_([*q_embedding.parameters(), *q_func.parameters()], clip_norm_value)
+        
+        optim_alpha.zero_grad()
+        alpha_loss.backward()
         
         optim_policy.step()
         optim_critic.step()
+        optim_alpha.step()
         
         return torch.tensor([
             q1_loss,
             q2_loss,
             policy_loss,
             ent,
-            0,
-            alpha_value
+            alpha_loss,
+            alpha()
         ]).to(device)
         
     def target_update_func():

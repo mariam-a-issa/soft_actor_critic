@@ -1,4 +1,5 @@
 from copy import deepcopy
+import math
 
 import torch
 from torch import tensor, nn, optim, Tensor
@@ -44,7 +45,63 @@ class Embedding(nn.Module):
         
         return torch.cat([states, states_agg[batch_index]], dim = 1), batch_index
     
+class Alpha:
+
+    def __init__(self,
+                 start : float,
+                 end : float,
+                 midpoint : float,
+                 slope : float,
+                 max_steps : int,
+                 auto_tune : bool = False,
+                 alpha_value : float = None):
+        """
+        Args:
+            start (float): The starting target normilized entropy 
+            end (float): The ending target normilized entropy
+            midpoint (float): Midpoint of the sigmoid decay of the target entropy
+            max_steps(int): The number of steps that will be taken in training
+            auto_tune (bool): If true will use start as the value for alpha
+            alpha_value (float): The alpha value that will be used if not autotuning
+        """
+        
+        self._start = start
+        self._end = end
+        self._midpoint = midpoint
+        self._slope = slope
+        self._log_alpha = torch.zeros(1, requires_grad=True)
+        self._max_steps = max_steps
+        self._auto_tune = auto_tune
+        self._alpha_value = alpha_value
+        
+    def __call__(self) -> Tensor:
+        """Will give the current alpha"""
+        if not self._auto_tune:
+            return self._alpha_value
+        return self._log_alpha.exp()
     
+    def sigmoid_target_entropy(self, current_step : int) -> float:
+        """Will use sigmoid decay to calculate the target entropy
+
+        Args:
+            current_step (int): The current step in training
+
+        Returns:
+            float: The current target entropy
+        """
+        
+        x = current_step / self._max_steps  # Normalize step to [0,1]
+        return self._start + (self._end - self._start) / (1 + math.exp(-self._slope * (x - self._midpoint)))
+    
+    def to(self, device : torch.device) -> None:
+        """Will move the alpha parameter to the device
+
+        Args:
+            device (torch.device): Torch device
+        """
+        
+        self._log_alpha.to(device)
+ 
 class Actor(nn.Module):
     
     def __init__(self,

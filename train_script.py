@@ -3,13 +3,13 @@ import os
 
 from environment_run import train
 
-MAIN_EXPERIMENT_NAME = 'nasimemu-mil-alpha-stp100-aug-no-clean-id-med-norm-ent-clip-q-no-sub-q-seperate-encoders'
+MAIN_EXPERIMENT_NAME = 'nasimemu-mil-alpha-stp100-aug-no-clean-id-med-norm-ent-no-sub-q-seperate-encoders-autotune-alpha-test-reproduce'
 NUM_RUNS = 1
 OTHER_HPARAMS = { #Just the default params that may be different than the ones in the training file
     'hdc_agent' : False,
     'mil_agent' : True,
     'alpha_value' : .4, #The tempurature coefficient or scaling factor for the target entropy when autotuning 
-    'autotune' : False,
+    'autotune' : True,
     'alpha_lr' : 3e-4,
     'critic_lr' : 3e-4,
     'policy_lr' : 3e-4,
@@ -32,6 +32,10 @@ OTHER_HPARAMS = { #Just the default params that may be different than the ones i
     'tensorboard' : False,
     'wandb' : True,
     'dynamic' : True,
+    'target_start' : .8,
+    'target_end' : .2,
+    'midpoint' : .5,
+    'slope' : 5, 
 }
 
 def train_hyper_param(name : str, values : list[float], seeds : list[int]):
@@ -57,4 +61,4 @@ def train_hyper_param(name : str, values : list[float], seeds : list[int]):
 
 if __name__ == '__main__':
     os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8' #Needed since training will have to be deterministic. More info at https://docs.nvidia.com/cuda/cublas/index.html#cublasApi_reproducibility
-    train_hyper_param('alpha_value', [3], [0, 1, 2])
+    train_hyper_param('target_start', [.8], [0])

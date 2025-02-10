@@ -1,1 +1,1 @@
-from .mil_implementation import Actor, QFunction, QFunctionTarget, Embedding
+from .mil_implementation import Actor, QFunction, QFunctionTarget, Embedding, Alpha

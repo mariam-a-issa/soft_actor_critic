@@ -62,7 +62,27 @@ def q_func_loss(cur_q1 : Tensor,
     q2_a = cur_q2.gather(1, cur_action)
     
     return actual_q - q1_a, actual_q - q2_a
+
+def alpha_loss(probs : Tensor,
+               log_probs : Tensor,
+               alpha : Tensor,
+               target_entropy : Tensor) -> Tensor:
+    """Will generate the loss for updating the alpha parameters
+
+    Args:
+        probs (Tensor): The action probs of shape b x a
+        log_probs (Tensor): The log action probs of shape b x a
+        alpha (Tensor): A scaler alpha value
+        target_entropy (Tensor): A scaler normilzed entropy value
+
+    Returns:
+        Tensor: Will be the value of the loss
+    """
     
+    batch_size, action_size = probs.shape
+    
+    return torch.bmm(probs.detach().view(batch_size, 1, action_size), 
+                         (-alpha* (log_probs + target_entropy).detach()).view(batch_size, action_size, 1)).mean() 
     
     
 def mse(input : Tensor) -> Tensor:

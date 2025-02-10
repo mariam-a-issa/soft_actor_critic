@@ -78,7 +78,11 @@ def train(
         tensorboard : bool = True,
         wandb : bool = True,
         dynamic : bool = False,
-        grad_clip : float = None) -> None:
+        grad_clip : float = None,
+        target_start : float = .8,
+        target_end : float = .2,
+        midpoint : float = .5,
+        slope : float = 5) -> None:
     """Will be the main training loop"""
     
     main_dir = Path(base_dir)
@@ -151,6 +155,12 @@ def train(
             buffer_size,
             sample_size,
             grad_clip,
+            target_start,
+            target_end,
+            slope,
+            midpoint,
+            max_steps,
+            autotune,
             random  
         )
     else:
