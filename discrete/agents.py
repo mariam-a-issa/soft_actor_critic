@@ -47,7 +47,7 @@ def create_mil_nn_agent(device_size : int,
         target_q_embedding = deepcopy(q_embedding)
         policy_embedding = mil_nn.Embedding(embed_size, pos_encode_size, device_size)
         
-    q_func = mil_nn.QFunction(2*embed_size, action_size)s
+    q_func = mil_nn.QFunction(2*embed_size, action_size)
     q_func_target = mil_nn.QFunctionTarget(q_func, tau)
     policy = mil_nn.Actor(2*embed_size, action_size)
     alpha = mil_nn.Alpha(target_ent_start, target_ent_end, midpoint, alpha_slope, max_steps, autotune, alpha_value)
