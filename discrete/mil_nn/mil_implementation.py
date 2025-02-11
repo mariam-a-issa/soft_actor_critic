@@ -53,7 +53,7 @@ class AttentionEmbedding(nn.Module):
                  device_dim : int,
                  num_heads : int) -> None:
         super().__init__()
-        self._emb_dim = emb_dim // 2
+        self._emb_dim = emb_dim
         self._pos_enc_dim = pos_enc_dim
         self._embedding = nn.Sequential(nn.Linear(device_dim + pos_enc_dim, self._emb_dim), nn.LeakyReLU())
         self._mha = nn.MultiheadAttention(self._emb_dim, num_heads, batch_first=True)
