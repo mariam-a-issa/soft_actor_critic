@@ -72,7 +72,18 @@ class AttentionEmbedding(nn.Module):
         reshape_embed_states = _reshape(embed_states, batch_index, self._emb_dim, filler_val=0).view(torch.unique(batch_index).numel(), -1, self._emb_dim) #batch_size x seq_length x embd size
         attn_output, _ = self._mha(reshape_embed_states, reshape_embed_states, reshape_embed_states)
         residual_output = attn_output + reshape_embed_states
-        return torch.cat((embed_states, self._norm(residual_output)[reshape_embed_states != 0].view(-1, self._emb_dim)), dim=1), batch_index
+        norm = self._norm(residual_output)
+
+        # Count occurrences of each batch index
+        _, counts = batch_index.unique(return_counts=True)
+
+        # Create indices for each batch element
+        seq_indices = torch.cat([torch.arange(n) for n in counts])
+
+        # Gather the required elements
+        selected_features = norm[batch_index, seq_indices, :]
+        
+        return torch.cat((embed_states, selected_features.view(-1, self._emb_dim)), dim=1), batch_index
         
         
 class Alpha:

@@ -3,7 +3,7 @@ import os
 
 from environment_run import train
 
-MAIN_EXPERIMENT_NAME = 'nasimemu-mil-alpha-stp100-aug-no-clean-id--seperate-encoders-autotune-alpha'
+MAIN_EXPERIMENT_NAME = 'nasimemu-mil-alpha-stp100-aug-no-clean-id--seperate-encoders-autotune-alpha-attention'
 NUM_RUNS = 1
 OTHER_HPARAMS = { #Just the default params that may be different than the ones in the training file
     'hdc_agent' : False,
@@ -30,7 +30,7 @@ OTHER_HPARAMS = { #Just the default params that may be different than the ones i
     'eval_frequency' : 10,
     'num_evals' : 5,
     'tensorboard' : False,
-    'wandb' : True,
+    'wandb' : False,
     'dynamic' : True,
     'target_start' : .8,
     'target_end' : .2,
