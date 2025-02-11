@@ -82,7 +82,9 @@ def train(
         target_start : float = .8,
         target_end : float = .2,
         midpoint : float = .5,
-        slope : float = 5) -> None:
+        slope : float = 5,
+        attention : bool = True,
+        num_heads : int = 2) -> None:
     """Will be the main training loop"""
     
     main_dir = Path(base_dir)
@@ -161,7 +163,9 @@ def train(
             midpoint,
             max_steps,
             autotune,
-            random  
+            random,
+            attention,
+            num_heads  
         )
     else:
         if hdc_agent:

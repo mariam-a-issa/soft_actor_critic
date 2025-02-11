@@ -24,7 +24,7 @@ class Embedding(nn.Module):
         
     def forward(self, states : Tensor, state_index : Tensor) -> tuple[Tensor, Tensor]:
         """Will encode and then embed each set of devices in the list using postional encoding, embedding layer, and concatiaton of an aggregation
-            states: All of the device states in a flattened mxn where m is the total numner of devices and n is the numner of features for eachd device
+            states: All of the device states in a flattened mxn where m is the total numner of devices and n 2 x embd dim
             state_index : An array representing the start index of each batch. The last index should be len of states as this indicates where the next batch should go
             
             return tensor of same of shape mx2*emb dim
@@ -45,6 +45,36 @@ class Embedding(nn.Module):
         
         return torch.cat([states, states_agg[batch_index]], dim = 1), batch_index
     
+class AttentionEmbedding(nn.Module):
+    
+    def __init__(self,
+                 emb_dim : int,
+                 pos_enc_dim : int,
+                 device_dim : int,
+                 num_heads : int) -> None:
+        super().__init__()
+        self._emb_dim = emb_dim // 2
+        self._pos_enc_dim = pos_enc_dim
+        self._embedding = nn.Sequential(nn.Linear(device_dim + pos_enc_dim, self._emb_dim), nn.LeakyReLU())
+        self._mha = nn.MultiheadAttention(self._emb_dim, num_heads, batch_first=True)
+        self._norm = nn.LayerNorm(self._emb_dim)
+        
+    def forward(self, states : Tensor, state_index : Tensor) -> tuple[Tensor, Tensor]:
+        batch_index = torch.cat([torch.zeros(state_index[i + 1] - state_index[i], dtype=int) + i for i in range(len(state_index) - 1)])
+        
+        pos_index = torch.cat([torch.arange(start = 1, end = state_index[i + 1] - state_index[i] + 1) for i in range(len(state_index) - 1)])
+
+        pos_enc = positional_encoding(pos_index, self._pos_enc_dim)
+        
+        states = torch.cat((states, pos_enc), dim = 1)
+        embed_states = self._embedding(states)
+        
+        reshape_embed_states = _reshape(embed_states, batch_index, self._emb_dim, filler_val=0).view(torch.unique(batch_index).numel(), -1, self._emb_dim) #batch_size x seq_length x embd size
+        attn_output, _ = self._mha(reshape_embed_states, reshape_embed_states, reshape_embed_states)
+        residual_output = attn_output + reshape_embed_states
+        return torch.cat((embed_states, self._norm(residual_output)[reshape_embed_states != 0].view(-1, self._emb_dim)), dim=1), batch_index
+        
+        
 class Alpha:
 
     def __init__(self,
@@ -108,8 +138,8 @@ class Actor(nn.Module):
                  embed_dim : int,
                  action_dim : int):
         super().__init__()
-        self._device_select = nn.Linear(2 * embed_dim, 1)
-        self._action_select = nn.Linear(2 * embed_dim, action_dim)
+        self._device_select = nn.Linear(embed_dim, 1)
+        self._action_select = nn.Linear(embed_dim, action_dim)
         self._action_dim = action_dim
         
     def forward(self, embed_states : Tensor, batch_index : Tensor) -> Tensor:
@@ -169,8 +199,8 @@ class QModel(nn.Module):
                 embed_dim : int,
                 action_dim : int):
         super().__init__()
-        self._device_q = nn.Sequential(nn.Linear(2 * embed_dim, embed_dim), nn.ReLU(), nn.Linear(embed_dim, 1))
-        self._action_q = nn.Sequential(nn.Linear(2 * embed_dim, embed_dim), nn.ReLU(), nn.Linear(embed_dim, action_dim))
+        self._device_q = nn.Sequential(nn.Linear(embed_dim, embed_dim), nn.ReLU(), nn.Linear(embed_dim, 2))
+        self._action_q = nn.Sequential(nn.Linear(embed_dim, embed_dim), nn.ReLU(), nn.Linear(embed_dim, action_dim))
         self._action_dim = action_dim
         
     def forward(self, embed_state : Tensor, batch_index : Tensor, state_index : Tensor, description : str = None) -> Tensor:
@@ -193,11 +223,11 @@ class QModel(nn.Module):
         
         action_q += device_q[:,0].view(-1,1)
         
-        #scaler = torch.tensor([state_index[i + 1] - state_index[i] for i in range(len(state_index) - 1)])[batch_index]
+        scaler = torch.tensor([state_index[i + 1] - state_index[i] for i in range(len(state_index) - 1)])[batch_index]
         
         #Following essentially takes average of all other device q values. We sum every single one and then subtract our own from it and then divide the total amount of other devices. There is an edge case when there is no other devices.
         #TODO switch to pointer version of segment as segment_coo is non deterministic
-        #action_q += ((segment_coo(device_q[:,1], batch_index, reduce='sum')[batch_index]- device_q[:, 1]) / (scaler - 1 + EPS)).view(-1,1) #Need EPS so that I am not dividing by zero when there is no other device. This will still end up being zero since the left hand side will be zero
+        action_q += ((segment_coo(device_q[:,1], batch_index, reduce='sum')[batch_index]- device_q[:, 1]) / (scaler - 1 + EPS)).view(-1,1) #Need EPS so that I am not dividing by zero when there is no other device. This will still end up being zero since the left hand side will be zero
         
         if description:
             LearningLogger().log_scalars({f'{description} Mean' : action_q.mean(), 

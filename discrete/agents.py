@@ -33,14 +33,25 @@ def create_mil_nn_agent(device_size : int,
                  midpoint : float,
                  max_steps : float,
                  autotune : bool,
-                 random : random):
+                 random : random,
+                 attention : bool,
+                 num_heads : int):
     
-    q_embedding = mil_nn.Embedding(embed_size, pos_encode_size, device_size)
-    target_q_embedding = deepcopy(q_embedding)
-    policy_embedding = mil_nn.Embedding(embed_size, pos_encode_size, device_size)
-    q_func = mil_nn.QFunction(embed_size, action_size)
+    #When creating the embedding functions understand the output sizes of the embeddings.
+    if attention:
+        q_embedding = mil_nn.AttentionEmbedding(embed_size, pos_encode_size, device_size, num_heads)
+        target_q_embedding = deepcopy(q_embedding)
+        policy_embedding = mil_nn.AttentionEmbedding(embed_size, pos_encode_size, device_size, num_heads)
+        new_embed_size = embed_size
+    else:
+        q_embedding = mil_nn.Embedding(embed_size, pos_encode_size, device_size)
+        target_q_embedding = deepcopy(q_embedding)
+        policy_embedding = mil_nn.Embedding(embed_size, pos_encode_size, device_size)
+        new_embed_size = 2 * embed_size
+        
+    q_func = mil_nn.QFunction(new_embed_size, action_size)
     q_func_target = mil_nn.QFunctionTarget(q_func, tau)
-    policy = mil_nn.Actor(embed_size, action_size)
+    policy = mil_nn.Actor(new_embed_size, action_size)
     alpha = mil_nn.Alpha(target_ent_start, target_ent_end, midpoint, alpha_slope, max_steps, autotune, alpha_value)
     
     optim_critic = torch.optim.Adam([*q_embedding.parameters(), *q_func.parameters()], lr=critic_lr)
