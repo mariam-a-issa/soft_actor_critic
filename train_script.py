@@ -25,8 +25,8 @@ OTHER_HPARAMS = { #Just the default params that may be different than the ones i
     'buffer_size' : 10 ** 6,
     'learning_steps' : 1,
     'update_frequency' : 1,
-    'environment_info' : {'id' : 'NASimEmu-v0', 'emulate' : False, 'scenario_name' : '//home/ian/projects/hd_sac/NASimEmu/scenarios/corp.v2.yaml', 'step_limit' : 100, 'augment_with_action' : True},
-    'max_steps' : 200000,
+    'environment_info' : {'id' : 'NASimEmu-v0', 'emulate' : False, 'scenario_name' : '/home/mariamai/projects/hd_sac/NASimEmu/scenarios/corp.v2.yaml', 'step_limit' : 100, 'augment_with_action' : True},
+    'max_steps' : 250000,
     'eval_frequency' : 10,
     'num_evals' : 5,
     'tensorboard' : False,
@@ -34,10 +34,10 @@ OTHER_HPARAMS = { #Just the default params that may be different than the ones i
     'dynamic' : True,
     'target_start' : .8,
     'target_end' : .2,
-    'midpoint' : .5,
-    'slope' : 5, 
+    'midpoint' : .4,
+    'slope' : 7, 
     'attention' : True,
-    'num_heads ' : 2
+    'num_heads' : 2
 }
 
 def train_hyper_param(name : str, values : list[float], seeds : list[int]):
