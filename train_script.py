@@ -3,7 +3,8 @@ import os
 
 from environment_run import train
 
-MAIN_EXPERIMENT_NAME = 'nasimemu-mil-alpha-stp100-aug-no-clean-id--seperate-encoders-autotune-alpha-attention'
+
+MAIN_EXPERIMENT_NAME = 'nasimemu-mil-alpha-stp100-aug-no-clean-id--seperate-encoders-autotune-alpha-graphattention'
 NUM_RUNS = 1
 OTHER_HPARAMS = { #Just the default params that may be different than the ones in the training file
     'hdc_agent' : False,
@@ -25,17 +26,17 @@ OTHER_HPARAMS = { #Just the default params that may be different than the ones i
     'buffer_size' : 10 ** 6,
     'learning_steps' : 1,
     'update_frequency' : 1,
-    'environment_info' : {'id' : 'NASimEmu-v0', 'emulate' : False, 'scenario_name' : '/home/mariamai/projects/hd_sac/NASimEmu/scenarios/corp.v2.yaml', 'step_limit' : 100, 'augment_with_action' : True},
+    'environment_info' : {'id' : 'NASimEmu-v0', 'emulate' : False, 'scenario_name' : '/home/ian/projects/hd_sac/NASimEmu/scenarios/corp.v2.yaml', 'step_limit' : 100, 'augment_with_action' : True},
     'max_steps' : 250000,
     'eval_frequency' : 10,
     'num_evals' : 5,
     'tensorboard' : False,
-    'wandb' : False,
+    'wandb' : True,
     'dynamic' : True,
     'target_start' : .8,
     'target_end' : .2,
-    'midpoint' : .5,
-    'slope' : 5, 
+    'midpoint' : .45,
+    'slope' : 6, 
     'attention' : False,
     'num_heads' : 2,
     'graph' : True,
