@@ -83,8 +83,10 @@ def train(
         target_end : float = .2,
         midpoint : float = .5,
         slope : float = 5,
-        attention : bool = True,
-        num_heads : int = 2) -> None:
+        attention : bool = False,
+        num_heads : int = 2,
+        graph : bool = False,
+        messages_passed : int = 2) -> None:
     """Will be the main training loop"""
     
     main_dir = Path(base_dir)
@@ -101,8 +103,6 @@ def train(
         h_params_dict[key] = value
         
     _csv_of_hparams(run_path, h_params_dict)
-
-    buffer = MemoryBuffer(buffer_size, sample_size, random, dynamic)
 
     logger = LearningLogger(base_dir, group_name, job_name, run_name, h_params_dict, tensorboard=tensorboard, wandb=wandb)
     
@@ -122,6 +122,12 @@ def train(
         action_space = env.action_space.n
         state_space = env.observation_space.shape[0]
         dynamic = False
+    
+    if graph:
+        environment_info['observation_format'] = 'graph_v2'
+        env = gym.make(**environment_info)
+        env.reset()
+        state_space += 1 # +1 feature (node/subnet) from NASimEmu Agents and seems to be used only when using graphs
     
     if seed is not None:
         torch.manual_seed(seed) 
@@ -165,7 +171,9 @@ def train(
             autotune,
             random,
             attention,
-            num_heads  
+            num_heads,
+            graph,
+            messages_passed
         )
     else:
         if hdc_agent:
@@ -209,26 +217,24 @@ def train(
     num_epi = 0
     epi_reward = 0
     
-    def get_action(state : Tensor, real_state : NDArray) -> tuple[tuple[tuple[int, int], int], Tensor]:
+    def get_action(state : Tensor) -> tuple[tuple[tuple[int, int], int], Tensor]:
         """Will get the action depending on exploring or doing the current policy
            Will return the NASimEmu action and the integer action as a Tensor"""
         if explore_steps <= steps:
             action = agent(state) 
-            return convert_int_action(action.data, env, real_state), action
+            return convert_int_action(action.data, env, state, graph), action
         else:
             action = random.randint(0, env.action_space.n-1) #Fix so that it takes into account padded actions depending on size of state
-            return convert_int_action(action, env ,state), torch.tensor(action) 
+            return convert_int_action(action, env ,state, graph), torch.tensor(action) 
     
-    real_state = env.reset()
-    state = torch.tensor(clean_state(real_state), device=device_obj, dtype=torch.float32)
+    state = clean_state(env.reset(), graph)
 
     try:
         while max_steps > steps:
-            action_nas, action = get_action(state, real_state)
+            action_nas, action = get_action(state)
             next_state, reward, done, _ = env.step(action_nas)
             real_state = next_state
-            next_state = clean_state(next_state)
-            next_state = torch.tensor(next_state, device=device_obj, dtype=torch.float32).view(-1, state_space)
+            next_state = clean_state(next_state, graph)
             trans = Transition( #states will be tensors, actions will be tensor integers, the reward will be a float, and terminated will be a bool
                 state=state,
                 action=action,

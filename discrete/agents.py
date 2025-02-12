@@ -5,8 +5,9 @@ from copy import deepcopy
 from torch import Tensor, tensor
 import torch
 from torch.nn import utils
+from torch_geometric.data import Data, Batch
 
-from utils import MemoryBuffer, Transition, LearningLogger, MAX_ROWS, DynamicMemoryBuffer
+from utils import MemoryBuffer, Transition, LearningLogger, MAX_ROWS, DynamicMemoryBuffer, GraphMemoryBuffer, group_to_boundaries_torch
 from . import nn, hdc, mil_nn, sac
 
 
@@ -35,27 +36,40 @@ def create_mil_nn_agent(device_size : int,
                  autotune : bool,
                  random : random,
                  attention : bool,
-                 num_heads : int):
+                 num_heads : int,
+                 graph : bool,
+                 message_passed : int):
     
     #When creating the embedding functions understand the output sizes of the embeddings.
     if attention:
         q_embedding = mil_nn.AttentionEmbedding(embed_size, pos_encode_size, device_size, num_heads)
         target_q_embedding = deepcopy(q_embedding)
         policy_embedding = mil_nn.AttentionEmbedding(embed_size, pos_encode_size, device_size, num_heads)
+        new_embed_size = embed_size
+        
+    elif graph:
+        q_embedding = mil_nn.GraphEmbedding(embed_size, pos_encode_size, device_size, message_passed)
+        target_q_embedding = deepcopy(q_embedding)
+        policy_embedding = mil_nn.GraphEmbedding(embed_size, pos_encode_size, device_size, message_passed)
+        new_embed_size = embed_size
     else:
         q_embedding = mil_nn.Embedding(embed_size, pos_encode_size, device_size)
         target_q_embedding = deepcopy(q_embedding)
         policy_embedding = mil_nn.Embedding(embed_size, pos_encode_size, device_size)
         
-    q_func = mil_nn.QFunction(2*embed_size, action_size)
+    q_func = mil_nn.QFunction(new_embed_size, action_size)
     q_func_target = mil_nn.QFunctionTarget(q_func, tau)
-    policy = mil_nn.Actor(2*embed_size, action_size)
+    policy = mil_nn.Actor(new_embed_size, action_size)
     alpha = mil_nn.Alpha(target_ent_start, target_ent_end, midpoint, alpha_slope, max_steps, autotune, alpha_value)
     
     optim_critic = torch.optim.Adam([*q_embedding.parameters(), *q_func.parameters()], lr=critic_lr)
     optim_policy = torch.optim.Adam([*policy_embedding.parameters(), *policy.parameters()], lr=policy_lr)
     optim_alpha = torch.optim.Adam([alpha._log_alpha], lr = alpha_lr)
-    memory = DynamicMemoryBuffer(buffer_length, sample_size, random)
+    
+    if graph:
+        memory = GraphMemoryBuffer(buffer_length, sample_size, random)
+    else:
+        memory = DynamicMemoryBuffer(buffer_length, sample_size, random)
     
     for obj in [q_embedding, policy_embedding, q_func, q_func_target, policy, alpha]:
         obj.to(device)
@@ -145,15 +159,29 @@ def create_mil_nn_agent(device_size : int,
         q_func_target.update()
         _polyak_average(q_embedding.parameters(), target_q_embedding.parameters(), tau)
         
-    def call(state : Tensor) -> Tensor:
+    def call(state : Tensor | Data) -> Tensor:
         with torch.no_grad():
-            embed_state, batch_index = policy_embedding(state, torch.tensor([0,state.shape[0]]))
+            
+            if graph:
+                state = Batch.from_data_list([state])
+                state_index = group_to_boundaries_torch(state.batch)
+            else:
+                state_index = torch.tensor([0,state.shape[0]])
+            
+            embed_state, batch_index = policy_embedding(state, state_index)
             action, _, _ = policy.sample_action(embed_state, batch_index)
             return action
         
-    def evaluate(state : Tensor) -> Tensor:
+    def evaluate(state : Tensor | Data) -> Tensor:
         with torch.no_grad():
-            embed_state, batch_index = policy_embedding(state, torch.tensor([0, state.shape[0]]))
+            
+            if graph:
+                state = Batch.from_data_list([state])
+                state_index = group_to_boundaries_torch(state.batch)
+            else:
+                state_index = torch.tensor([0,state.shape[0]])
+            
+            embed_state, batch_index = policy_embedding(state, state_index)
             action = policy.evaluate_action(embed_state, batch_index)
             return action
         
@@ -372,10 +400,10 @@ class Agent:
         
         self._add_data = add_data
         
-    def __call__(self, state : Tensor) -> Tensor:
+    def __call__(self, state : Tensor | Data) -> Tensor:
         return self._action_func(state)
     
-    def evaluate(self, state : Tensor) -> Tensor:
+    def evaluate(self, state : Tensor | Data) -> Tensor:
         return self._evaluate_func(state)
     
     def update(self, steps : int) -> None:

@@ -17,7 +17,7 @@ def evaluate(env : gym.Env, agent : Agent, num_eval, cur_epi) -> None:
         state = env.reset()
         
         while not done:
-            action = agent.evaluate(torch.tensor(clean_state(state)))
+            action = agent.evaluate(clean_state(state))
             next_state, reward, done, _ = env.step(convert_int_action(action.data, env, state))
             if reward >0:
                 print(f'In eval {i} reward of {reward}')

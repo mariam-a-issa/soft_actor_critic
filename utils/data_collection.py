@@ -2,7 +2,9 @@ from collections import deque
 from typing import NamedTuple
 import random
 import torch
+from torch_geometric.data import Data, Batch
 from torch import tensor, Tensor
+from .tensor_organization import group_to_boundaries_torch
 
 class Transition(NamedTuple):
     "Will be how a single transition of environment is stored"
@@ -99,6 +101,37 @@ class DynamicMemoryBuffer():
         done = torch.stack(done, dim = 0)
         
         return Transition(state=state, action=action, next_state=next_state, reward=reward, done=done, num_devices=None, num_devices_n=None, state_index=state_index, next_state_index=next_state_index)    
+    
+    def add_data(self, trans : Transition) -> None:
+        self._memory.append(trans)
+            
+        
+class GraphMemoryBuffer():
+    """A type of memory buffer that will retain graph represententatoins"""
+    
+    def __init__(self, buffer_length : int, sample_size : int, random : random) -> None:
+        self._memory = deque(maxlen=buffer_length)
+        self._sample_size = sample_size
+        self._random = random
+        
+    def sample(self) -> Transition:
+        if len(self._memory) <= self._sample_size:
+            sample = self._memory
+        else:
+            sample = self._random.sample(self._memory, self._sample_size)
+            
+        state, action, next_state, reward, done, _, _, _, _ = zip(*sample) #In this case state and next_state are tuples of Data
+        cur_batch = Batch.from_data_list(state)
+        next_batch = Batch.from_data_list(next_state)
+        
+        state_index = group_to_boundaries_torch(cur_batch.batch)
+        next_state_index = group_to_boundaries_torch(next_batch.batch)
+        
+        action = torch.stack(action, dim = 0)
+        reward = torch.stack(reward, dim =0)
+        done = torch.stack(done, dim = 0)
+        
+        return Transition(state=cur_batch, next_state=next_batch, action=action, reward=reward, done=done, num_devices=None, num_devices_n=None, state_index=state_index, next_state_index=next_state_index)
     
     def add_data(self, trans : Transition) -> None:
         self._memory.append(trans)

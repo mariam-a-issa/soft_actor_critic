@@ -7,8 +7,9 @@ from torch_scatter import segment_coo
 from torch_scatter.composite import scatter_log_softmax
 import torch.nn.functional as F 
 from torch.distributions import Categorical
+from torch_geometric.data import Data, Batch
 
-from .architecture import positional_encoding
+from .architecture import positional_encoding, MultiMessagePassingWithAttention
 from utils import EPS, LearningLogger
 
 class Embedding(nn.Module):
@@ -84,6 +85,34 @@ class AttentionEmbedding(nn.Module):
         selected_features = norm[batch_index, seq_indices, :]
         
         return torch.cat((embed_states, selected_features.view(-1, self._emb_dim)), dim=1), batch_index
+
+class GraphEmbedding(nn.Module):
+    
+    def __init__(self,
+                 emb_dim : int,
+                 pos_enc_dim : int,
+                 device_dim : int,
+                 message_passes : int) -> None:
+        super().__init__()
+        self._embedding = nn.Sequential(nn.Linear(device_dim + pos_enc_dim, emb_dim), nn.LeakyReLU())
+        self._gnn = MultiMessagePassingWithAttention(message_passes, emb_dim)
+        self._pos_enc_dim = pos_enc_dim
+        
+    def forward(self, states : Batch, state_index : Tensor) -> tuple[Tensor, Tensor]:
+        batch_index = states.batch #This will return batch index some how some way
+        pos_index = torch.cat([torch.arange(start = 1, end = state_index[i + 1] - state_index[i] + 1) for i in range(len(state_index) - 1)])
+        pos_enc = positional_encoding(pos_index, self._pos_enc_dim)
+        data_lens = [x.num_nodes for x in states.to_data_list()]
+        
+        x = torch.cat((states.x, pos_enc), dim=1)
+        x = self._embedding(x)
+        x = self._gnn(x, states.edge_attr, states.edge_index, batch_index, data_lens)
+        
+        #Need to remove the nodes that represent a subnet. It is a subnet if the first feature is 1
+        
+        mask = states.x[:, 0] != 1 #Keep the ones that do not equal one 
+        
+        return x[mask], batch_index[mask]
         
         
 class Alpha:

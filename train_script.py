@@ -34,10 +34,12 @@ OTHER_HPARAMS = { #Just the default params that may be different than the ones i
     'dynamic' : True,
     'target_start' : .8,
     'target_end' : .2,
-    'midpoint' : .4,
-    'slope' : 7, 
-    'attention' : True,
-    'num_heads' : 2
+    'midpoint' : .5,
+    'slope' : 5, 
+    'attention' : False,
+    'num_heads' : 2,
+    'graph' : True,
+    'messages_passed' : 2
 }
 
 def train_hyper_param(name : str, values : list[float], seeds : list[int]):
