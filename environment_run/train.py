@@ -260,7 +260,7 @@ def train(
                 if explore_steps <= steps:
                     num_epi += 1
                     if num_epi % eval_frequency == 0:
-                        evaluate(deepcopy(env), agent, num_evals, num_epi) #Need to deepcopy so that we keep the environment the same when training or else the state the environment will be in will be different from the state that is in next_state
+                        evaluate(deepcopy(env), agent, num_evals, num_epi, graph) #Need to deepcopy so that we keep the environment the same when training or else the state the environment will be in will be different from the state that is in next_state
 
             state = next_state
     except Exception as e:

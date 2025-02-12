@@ -6,7 +6,7 @@ from discrete import Agent
 from utils import LearningLogger
 from .helpers import convert_int_action, clean_state
 
-def evaluate(env : gym.Env, agent : Agent, num_eval, cur_epi) -> None:
+def evaluate(env : gym.Env, agent : Agent, num_eval, cur_epi, graph) -> None:
     """Will evaluate the current agent on the environment for a given amount of episodes and then log the results"""
     
     epi_reward = 0
@@ -14,11 +14,12 @@ def evaluate(env : gym.Env, agent : Agent, num_eval, cur_epi) -> None:
     for i in range(num_eval):
         
         done = False
-        state = env.reset()
+        state = clean_state(env.reset(), graph)
         
         while not done:
-            action = agent.evaluate(clean_state(state))
-            next_state, reward, done, _ = env.step(convert_int_action(action.data, env, state))
+            action = agent.evaluate(state)
+            next_state, reward, done, _ = env.step(convert_int_action(action.data, env, state, graph))
+            next_state = clean_state(next_state, graph)
             if reward >0:
                 print(f'In eval {i} reward of {reward}')
             epi_reward += reward

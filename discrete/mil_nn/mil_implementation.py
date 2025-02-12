@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from torch.distributions import Categorical
 from torch_geometric.data import Data, Batch
 
-from .architecture import positional_encoding, MultiMessagePassingWithAttention
+from .architecture import positional_encoding, MultiMessagePassingWithAttention, MultiMessagePassing
 from utils import EPS, LearningLogger
 
 class Embedding(nn.Module):
@@ -95,7 +95,7 @@ class GraphEmbedding(nn.Module):
                  message_passes : int) -> None:
         super().__init__()
         self._embedding = nn.Sequential(nn.Linear(device_dim + pos_enc_dim, emb_dim), nn.LeakyReLU())
-        self._gnn = MultiMessagePassingWithAttention(message_passes, emb_dim)
+        self._gnn = MultiMessagePassing(message_passes, emb_dim)
         self._pos_enc_dim = pos_enc_dim
         
     def forward(self, states : Batch, state_index : Tensor) -> tuple[Tensor, Tensor]:
@@ -106,7 +106,7 @@ class GraphEmbedding(nn.Module):
         
         x = torch.cat((states.x, pos_enc), dim=1)
         x = self._embedding(x)
-        x = self._gnn(x, states.edge_attr, states.edge_index, batch_index, data_lens)
+        x = self._gnn(x, states.edge_attr, states.edge_index, batch_index, states.num_graphs, data_lens)
         
         #Need to remove the nodes that represent a subnet. It is a subnet if the first feature is 1
         

@@ -9,6 +9,23 @@ from torch_geometric.nn import MessagePassing, GlobalAttention, TransformerConv,
 
 
 #Code from https://github.com/jaromiru/NASimEmu-agents/blob/main/graph_nns.py#L363
+
+class MultiMessagePassing(nn.Module):
+    def __init__(self, steps, emb_dim):
+        super().__init__()
+
+        self._gnns = nn.ModuleList( [GraphNet(emb_dim) for i in range(steps)] )           
+        self._emb_dim = emb_dim
+        self._steps = steps
+
+    def forward(self, x, edge_attr, edge_index, batch_ind, num_graphs, data_lens):
+        x_global = torch.zeros(num_graphs, self._emb_dim)
+
+        for i in range(self._steps):
+            x = self._gnns[i](x, edge_attr, edge_index, x_global, batch_ind)            
+
+        return x
+
 class MultiMessagePassingWithAttention(nn.Module):
     def __init__(self, steps, emb_dim):
         super().__init__()
@@ -18,7 +35,7 @@ class MultiMessagePassingWithAttention(nn.Module):
         self._emb_dim = emb_dim
         self._steps = steps
 
-    def forward(self, x, edge_attr, edge_index, batch_ind, data_lens):
+    def forward(self, x, edge_attr, edge_index, batch_ind, num_graphs, data_lens):
         x_att = torch.zeros(len(x), self._emb_dim)
 
         edge_complete = complete_graph(data_lens)
