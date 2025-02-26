@@ -4,10 +4,10 @@ import os
 from environment_run import train
 
 
-MAIN_EXPERIMENT_NAME = 'nasimemu-mil-alpha-stp100-aug-no-clean-id--seperate-encoders-autotune-alpha-graphattention'
+MAIN_EXPERIMENT_NAME = 'nasimemu-mil-alpha-stp100-aug-no-clean-id-seperate-encoders-autotune-alpha-graphattentionsimple'
 NUM_RUNS = 1
 OTHER_HPARAMS = { #Just the default params that may be different than the ones in the training file
-    'hdc_agent' : False,
+    'hdc_agent' : True,
     'mil_agent' : True,
     'alpha_value' : .4, #The tempurature coefficient or scaling factor for the target entropy when autotuning 
     'autotune' : True,
@@ -26,12 +26,12 @@ OTHER_HPARAMS = { #Just the default params that may be different than the ones i
     'buffer_size' : 10 ** 6,
     'learning_steps' : 1,
     'update_frequency' : 1,
-    'environment_info' : {'id' : 'NASimEmu-v0', 'emulate' : False, 'scenario_name' : '/home/ian/projects/hd_sac/NASimEmu/scenarios/corp.v2.yaml', 'step_limit' : 100, 'augment_with_action' : True},
+    'environment_info' : {'id' : 'NASimEmu-v0', 'emulate' : False, 'scenario_name' : '/home/ian/projects/hd_sac/NetworkAttackSimulator/nasim/scenarios/benchmark/medium.yaml', 'step_limit' : 100, 'augment_with_action' : True},
     'max_steps' : 250000,
     'eval_frequency' : 10,
     'num_evals' : 5,
     'tensorboard' : False,
-    'wandb' : True,
+    'wandb' : False,
     'dynamic' : True,
     'target_start' : .8,
     'target_end' : .2,
@@ -39,8 +39,9 @@ OTHER_HPARAMS = { #Just the default params that may be different than the ones i
     'slope' : 6, 
     'attention' : False,
     'num_heads' : 2,
-    'graph' : True,
-    'messages_passed' : 2
+    'graph' : False,
+    'messages_passed' : 2,
+    'gpu' : False
 }
 
 def train_hyper_param(name : str, values : list[float], seeds : list[int]):
@@ -57,7 +58,7 @@ def train_hyper_param(name : str, values : list[float], seeds : list[int]):
             
             try:
                 train(run_name = f'{name}({value})_seed({seed})', base_dir='runs', group_name = MAIN_EXPERIMENT_NAME, job_name = f'{name}_experiment', **h_params)
-            except ValueError: 
+            except ValueError as e: 
                 f = open(f'runs/{MAIN_EXPERIMENT_NAME}/{name}_experiment/{name}({value})_seed({seed})/nan_v({value})_seed({seed}).txt', 'w', encoding='utf-8')
                 f.write('I have NaNed')
                 f.close()

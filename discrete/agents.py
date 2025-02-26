@@ -8,8 +8,150 @@ from torch.nn import utils
 from torch_geometric.data import Data, Batch
 
 from utils import MemoryBuffer, Transition, LearningLogger, MAX_ROWS, DynamicMemoryBuffer, GraphMemoryBuffer, group_to_boundaries_torch
-from . import nn, hdc, mil_nn, sac
+from . import nn, hdc, mil_nn, mil_hdc, sac
 
+def create_mil_hdc_agent(device_size : int,
+                 action_size : int,
+                 hyper_dim : int,
+                 policy_lr : float,
+                 critic_lr : float,
+                 alpha_lr : float,
+                 discount : float,
+                 tau : float,
+                 alpha_value : float,
+                 target_update : int, #When the target should update
+                 update_frequency : int, #When the models should update,
+                 learning_steps : int, #Amount of gradient steps
+                 device : torch.device,
+                 buffer_length : int,
+                 sample_size : int,
+                 clip_norm_value : float,
+                 target_ent_start : float,
+                 target_ent_end : float,
+                 alpha_slope : float,
+                 midpoint : float,
+                 max_steps : float,
+                 autotune : bool,
+                 random : random):
+    
+    embed = mil_hdc.Encoder(hyper_dim, device_size)
+    policy = mil_hdc.Actor(hyper_dim, action_size)
+    q_func = mil_hdc.QFunction(hyper_dim, action_size)
+    q_target = mil_hdc.QFunctionTarget(q_func, tau)
+    alpha = mil_nn.Alpha(target_ent_start, target_ent_end, midpoint, alpha_slope, max_steps, autotune, alpha_value)
+    
+    optim_policy = torch.optim.Adam(policy.parameters(), policy_lr)
+    optim_alpha = torch.optim.Adam([alpha._log_alpha], alpha_lr)
+    
+    memory = DynamicMemoryBuffer(buffer_length, sample_size, random)
+    
+    for obj in [embed, policy, q_func, q_target, alpha]:
+        obj.to(device)
+        
+    def update(steps) -> Tensor:
+        """Will return tensor of the losses in a tensor of dim 6 in order of Qfunc1, Qfunc2, Actor Loss, Entropy, Alpha Loss, Alpha Value"""
+        
+        trans = memory.sample()
+        
+        cur_state, cur_batch_index = embed(trans.state, trans.state_index)
+        
+        cur_q1, cur_q2 = q_func(cur_state, cur_batch_index, trans.state_index)
+        _, cur_prob, cur_log_prob = policy.sample_action(cur_state, cur_batch_index, trans.state_index)
+        
+        number_devices = torch.diff(trans.state_index)
+        cur_log_prob = cur_log_prob / torch.log(number_devices * action_size).view(-1, 1)
+        
+        with torch.no_grad():
+            cur_q_target = q_target(cur_state, cur_batch_index, trans.state_index)
+            
+            next_state_embed, next_batch_index = embed(trans.next_state, trans.next_state_index)
+            
+            next_q_target = q_target(next_state_embed, next_batch_index, trans.next_state_index)
+            _, next_prob, next_log_prob = policy.sample_action(next_state_embed, next_batch_index, trans.next_state_index)
+            
+            next_log_prob = next_log_prob / torch.log(number_devices * action_size).view(-1, 1) #Normilize by the maximum possible entropy
+            batch_size, cur_action_size = cur_prob.shape
+            
+            ent = -torch.bmm(cur_prob.view(batch_size, 1, cur_action_size),
+                            cur_log_prob.view(batch_size, cur_action_size, 1)).mean()
+            
+        policy_loss = sac.policy_loss(cur_q_target, cur_prob, cur_log_prob, alpha()).mean().squeeze()
+        q1_dif, q2_dif = sac.q_func_loss(cur_q1, 
+                                         cur_q2,
+                                         next_q_target,
+                                         trans.action,
+                                         next_prob,
+                                         next_log_prob,
+                                         trans.reward,
+                                         alpha(),
+                                         discount,
+                                         trans.done)
+        alpha_loss = sac.alpha_loss(cur_prob,
+                                    cur_log_prob,
+                                    alpha(),
+                                    alpha.sigmoid_target_entropy(steps))
+        
+        matrix_l1 = q1_dif * cur_state * critic_lr
+        matrix_l2 = q2_dif * cur_state * critic_lr
+        
+        q1_params : Tensor
+        q2_params : Tensor
+        q1_params, q2_params = q_func.parameters()
+        
+        optim_policy.zero_grad()
+        policy_loss.backward()
+        optim_policy.step()
+        
+        q1_params.index_add_(0, trans.action.squeeze(), matrix_l1)
+        q2_params.index_add_(0, trans.action.squeeze(), matrix_l2)
+
+        optim_alpha.zero_grad()
+        alpha_loss.backward()
+        
+        optim_policy.step()
+        optim_alpha.step()
+        
+        q1_loss = sac.mse(q1_dif)
+        q2_loss = sac.mse(q2_dif )
+        
+        return torch.tensor([
+            q1_loss,
+            q2_loss,
+            policy_loss,
+            ent,
+            alpha_loss,
+            alpha()
+        ]).to(device)
+
+    def call(state : Tensor | Data) -> Tensor:
+        with torch.no_grad():
+            state_index = torch.tensor([0,state.shape[0]])
+            embed_state, batch_index = embed(state, state_index)
+            action, _, _ = policy.sample_action(embed_state, batch_index, state_index)
+            return action
+        
+    def evaluate(state : Tensor | Data) -> Tensor:
+        with torch.no_grad():
+            state_index = torch.tensor([0,state.shape[0]])
+            embed_state, batch_index = embed(state, state_index)
+            action = policy.evaluate_action(embed_state, batch_index, state_index)
+            return action
+        
+    def add_data(trans : Transition) -> None:
+        memory.add_data(trans)
+        
+    return Agent(
+        target_update,
+        update_frequency,
+        learning_steps,
+        update,
+        call,
+        q_target.update,
+        lambda x : None,
+        evaluate,
+        add_data
+    )
+        
 
 def create_mil_nn_agent(device_size : int,
                  action_size : int,

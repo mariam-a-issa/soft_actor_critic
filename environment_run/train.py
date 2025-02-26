@@ -12,7 +12,7 @@ from numpy.typing import NDArray
 #import gymnasium
 import gym
 
-from discrete import create_hdc_agent, create_nn_agent, create_mil_nn_agent
+from discrete import create_hdc_agent, create_nn_agent, create_mil_nn_agent, create_mil_hdc_agent
 from utils import MemoryBuffer, Transition, LearningLogger
 from .evaluate import evaluate
 from .helpers import convert_int_action, clean_state
@@ -131,7 +131,7 @@ def train(
     
     if seed is not None:
         torch.manual_seed(seed) 
-        torch.use_deterministic_algorithms(True)
+        torch.use_deterministic_algorithms(True, warn_only=True)
         random.seed(seed)
         np.random.seed(seed)
 
@@ -144,37 +144,66 @@ def train(
 
     torch.set_default_device(device_obj)
 
+
     if mil_agent:
-        agent = create_mil_nn_agent(
-            state_space,
-            action_space,
-            hidden_size, 
-            pos_enc_size,
-            policy_lr,
-            critic_lr,
-            alpha_lr,
-            discount,
-            tau,
-            alpha_value,
-            target_update,
-            update_frequency,
-            learning_steps,
-            device_obj,
-            buffer_size,
-            sample_size,
-            grad_clip,
-            target_start,
-            target_end,
-            slope,
-            midpoint,
-            max_steps,
-            autotune,
-            random,
-            attention,
-            num_heads,
-            graph,
-            messages_passed
-        )
+        if hdc_agent:
+            agent = create_mil_hdc_agent(
+                state_space,
+                action_space,
+                hypervec_dim,
+                policy_lr,
+                critic_lr,
+                alpha_lr,
+                discount,
+                tau,
+                alpha_value,
+                target_update,
+                update_frequency,
+                learning_steps,
+                device_obj,
+                buffer_size, 
+                sample_size,
+                grad_clip,
+                target_start,
+                target_end,
+                slope,
+                midpoint,
+                max_steps,
+                autotune,
+                random
+            )
+            
+        else:    
+            agent = create_mil_nn_agent(
+                state_space,
+                action_space,
+                hidden_size, 
+                pos_enc_size,
+                policy_lr,
+                critic_lr,
+                alpha_lr,
+                discount,
+                tau,
+                alpha_value,
+                target_update,
+                update_frequency,
+                learning_steps,
+                device_obj,
+                buffer_size,
+                sample_size,
+                grad_clip,
+                target_start,
+                target_end,
+                slope,
+                midpoint,
+                max_steps,
+                autotune,
+                random,
+                attention,
+                num_heads,
+                graph,
+                messages_passed
+            )
     else:
         if hdc_agent:
             agent = create_hdc_agent(
@@ -216,6 +245,7 @@ def train(
     steps = 0
     num_epi = 0
     epi_reward = 0
+    
     
     def get_action(state : Tensor) -> tuple[tuple[tuple[int, int], int], Tensor]:
         """Will get the action depending on exploring or doing the current policy

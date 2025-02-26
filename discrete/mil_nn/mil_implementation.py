@@ -31,7 +31,7 @@ class Embedding(nn.Module):
             return tensor of same of shape mx2*emb dim
                    batch index where each element corresponds to a device in states and represents what element of the batch it is
         """
-        
+        #TODO there is a way to do this
         pos_index = torch.cat([torch.arange(start = 1, end = state_index[i + 1] - state_index[i] + 1) for i in range(len(state_index) - 1)])
 
         pos_enc = positional_encoding(pos_index, self._pos_enc_dim)
@@ -39,6 +39,7 @@ class Embedding(nn.Module):
         states = torch.cat((states, pos_enc), dim = 1)
         states = self._embeding(states)
         
+        #TODO Can do this with interleave
         batch_index = torch.cat([torch.zeros(state_index[i + 1] - state_index[i], dtype=int) + i for i in range(len(state_index) - 1)]) #Will create an index that can be used by torch_scatter to reduce corresponding elements
         #TODO switch to pointer version of segment as segment_coo is non deterministic
         states_agg = torch.cat([segment_coo(states, batch_index, reduce='mean'), segment_coo(states, batch_index, reduce='max')], dim=1)
