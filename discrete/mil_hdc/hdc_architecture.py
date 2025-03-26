@@ -10,6 +10,7 @@ from copy import deepcopy
 from utils import LearningLogger, EPS
 from ..mil_utils import generate_batch_index, generate_counting_tensor, permute_rows_by_shifts, permute_rows_by_shifts_matrix, reshape
 
+#TODO Switch it up so that it does not bind them down at the end and only binds them to gether then permutes
 class Encoder:
     
     def __init__(self,
@@ -41,15 +42,30 @@ class Encoder:
         
         #m x hyper_dim = m x feat @ feat x hyper_dim
         
-        encoded_devices = torch.exp(1j * ((nodes @ self._s_hdvec) + self._bias))
-        permute_matrix = generate_counting_tensor(state_index)
-        devices_permuted = permute_rows_by_shifts(encoded_devices, permute_matrix)
-        batch_index = generate_batch_index(state_index)
-        #Will bind together all of the devices in a single batch
-        write = torch.ones(len(torch.unique(batch_index)), self._dim, dtype = torch.cfloat)
-        write.scatter_reduce_(dim=0, src=devices_permuted, index=batch_index.view(-1, 1).expand(-1 , self._dim), reduce='prod')
+        # encoded_devices = torch.exp(1j * ((nodes @ self._s_hdvec) + self._bias))
+        # permute_matrix = generate_counting_tensor(state_index)
+        # devices_permuted = permute_rows_by_shifts(encoded_devices, permute_matrix)
+        # batch_index = generate_batch_index(state_index)
+        # #Will bind together all of the devices in a single batch
+        # write = torch.ones(len(torch.unique(batch_index)), self._dim, dtype = torch.cfloat)
+        # write.scatter_reduce_(dim=0, src=devices_permuted, index=batch_index.view(-1, 1).expand(-1 , self._dim), reduce='prod')
         
-        return write, batch_index
+        #Encode and permute the devices
+        encoded_devices = nodes @ self._s_hdvec + self._bias
+        permute_vector = generate_counting_tensor(state_index)
+        devices_permuted = permute_rows_by_shifts(encoded_devices, permute_vector)
+        
+        #Bind them all together by adding them then exp
+        batch_index = generate_batch_index(state_index)
+        grouped_products : Tensor = torch.zeros((batch_index.max() + 1, encoded_devices.shape[1]), dtype=encoded_devices.dtype)
+        grouped_products.index_add_(0, batch_index, devices_permuted)
+        grouped_products = torch.exp(1j * grouped_products)
+        grouped_products = grouped_products[batch_index] 
+
+        #Repermute them so that the specific device aligns
+        final_encode = permute_rows_by_shifts(grouped_products, -1 * permute_vector)
+        
+        return final_encode, batch_index
     
     def to(self, device : torch.device) -> None:
         self._s_hdvec.to(device)
@@ -68,8 +84,11 @@ class Actor(nn.Module):
             action_dim (int): The number of actions that can be taken at a node
         """
         super().__init__()
-        self._action = torch.zeros(action_dim, dim, dtype=torch.cfloat, requires_grad=True)
-        self._device = torch.zeros(1, dim, dtype=torch.cfloat, requires_grad=True)
+        self._action = nn.Linear(dim, action_dim, dtype=torch.cfloat, bias=False)
+        self._device = nn.Linear(dim, 1, dtype = torch.cfloat, bias=False)
+
+        self._action.weight = nn.Parameter(torch.zeros(action_dim, dim, dtype=torch.cfloat))
+        self._device.weight = nn.Parameter(torch.zeros(1, dim, dtype=torch.cfloat))
         
         self._dim = dim
         self._action_dim = action_dim
@@ -85,16 +104,19 @@ class Actor(nn.Module):
         Returns:
             Tensor: bm x a matrix where it represents the logits of actions on a device
         """
-        counting = generate_counting_tensor(state_index)
-        BM = counting.shape[0] #Bm is the total number of devices
-        permuted_a_model : Tensor = permute_rows_by_shifts_matrix(self._action.unsqueeze(0).expand(BM, self._action_dim, self._dim),
-                                                                 counting)
-        permuted_d_model : Tensor = permute_rows_by_shifts_matrix(self._device.unsqueeze(0).expand(BM, 1 , self._dim),
-                                                                 counting)
+        # counting = generate_counting_tensor(state_index)
+        # BM = counting.shape[0] #Bm is the total number of devices
+        # permuted_a_model : Tensor = permute_rows_by_shifts_matrix(self._action.unsqueeze(0).expand(BM, self._action_dim, self._dim),
+        #                                                          counting)
+        # permuted_d_model : Tensor = permute_rows_by_shifts_matrix(self._device.unsqueeze(0).expand(BM, 1 , self._dim),
+        #                                                          counting)
         
-        #go from bmxaxd @ bxd-> bmxaxd @ bxdx1 -> bmxaxd @ bmxdx1 = b x a x 1
-        device_select = torch.real((permuted_d_model @ embedded_state[batch_index].unsqueeze(-1)).view(BM, 1))
-        action_select = torch.real((permuted_a_model @ embedded_state[batch_index].unsqueeze(-1)).view(BM, self._action_dim))
+        # #go from bmxaxd @ bxd-> bmxaxd @ bxdx1 -> bmxaxd @ bmxdx1 = b x a x 1
+        # device_select = torch.real((permuted_d_model @ embedded_state[batch_index].unsqueeze(-1)).view(BM, 1)) / self._dim
+        # action_select = torch.real((permuted_a_model @ embedded_state[batch_index].unsqueeze(-1)).view(BM, self._action_dim)) / self._dim
+        #TODO may need to not normalize
+        action_select = torch.real(self._action(torch.conj(embedded_state))) / self._dim
+        device_select = torch.real(self._device(torch.conj(embedded_state))) / self._dim
         
         b = batch_index.unique().numel()
         if b == 1:
@@ -125,7 +147,7 @@ class Actor(nn.Module):
         probs = dist.probs
         return actions, probs, log_probs_reshape
     
-    def evaluate_action(self, embed_states : Tensor, batch_index : Tensor) -> Tensor:
+    def evaluate_action(self, embed_states : Tensor, batch_index : Tensor, state_index : Tensor) -> Tensor:
         """Will find and return the action that has the maximum probability of being choosen
         
             embed_states: a bmxe matrix where b is the batch size, m is the variable size of devices in each part group of the batch and e is the embeding dimension
@@ -134,12 +156,10 @@ class Actor(nn.Module):
             return: bx1 tensor representing the index of the choosen action, b x (max m * a) of the padded probabilites, b x (max m * a) of the padded log probabilies
         
         """
-        log_probs = self(embed_states, batch_index)
+        log_probs = self(embed_states, batch_index, state_index)
         log_probs_reshape = reshape(log_probs, batch_index, self._action_dim)
         return torch.argmax(log_probs_reshape, dim=-1)
     
-    def parameters(self, recurse = True):
-        return [self._action, self._device]
     
 class QModel():
     
@@ -152,8 +172,15 @@ class QModel():
             dim (int): Dim of the hypervector
             action_dim (int): Number of actions that can be taken
         """
-        self._action = torch.zeros(action_dim, dim, dtype=torch.cfloat, requires_grad=False)
-        self._device = torch.zeros(2, dim, dtype=torch.cfloat, requires_grad=False)
+        upper_bound = 1 / math.sqrt(dim)
+        lower_bound = -upper_bound
+        
+        #Using the same initilzation as the torch.nn.Linear 
+        #https://github.com/pytorch/pytorch/blob/main/torch/nn/modules/linear.py#L106-L108
+
+        self._action = (upper_bound - lower_bound) * torch.rand(dim, action_dim, dtype=torch.cfloat) + lower_bound
+        self._action.requires_grad_(False)
+        self._device = torch.zeros(dim, 2, dtype=torch.cfloat, requires_grad=False)
         
         self._dim = dim
         self._action_dim = action_dim
@@ -170,16 +197,16 @@ class QModel():
             tuple[Tensor, Tensor]: Will return the Q values for the action (bm x a) and then for the devices (bm x 2)
         """
         
-        counting = generate_counting_tensor(state_index)
-        BM = counting.shape[0] #Bm is the total number of devices
-        permuted_a_model : Tensor = permute_rows_by_shifts_matrix(self._action.unsqueeze(0).expand(BM, self._action_dim, self._dim),
-                                                                 counting)
-        permuted_d_model : Tensor = permute_rows_by_shifts_matrix(self._device.unsqueeze(0).expand(BM, 2 , self._dim),
-                                                                 counting)
+        # counting = generate_counting_tensor(state_index)
+        # BM = counting.shape[0] #Bm is the total number of devices
+        # permuted_a_model : Tensor = permute_rows_by_shifts_matrix(self._action.unsqueeze(0).expand(BM, self._action_dim, self._dim),
+        #                                                          counting)
+        # permuted_d_model : Tensor = permute_rows_by_shifts_matrix(self._device.unsqueeze(0).expand(BM, 2 , self._dim),
+        #                                                          counting)
         
-        #go from bmxaxd @ bxd-> bmxaxd @ bxdx1 -> bmxaxd @ bmxdx1 = b x a x 1
-        device_q = torch.real((permuted_d_model @ embedded_state[batch_index].unsqueeze(-1)).view(BM, 2))
-        action_q = torch.real((permuted_a_model @ embedded_state[batch_index].unsqueeze(-1)).view(BM, self._action_dim))
+
+        action_q = torch.real(torch.conj(embedded_state) @ self._action) / self._dim
+        device_q = torch.real(torch.conj(embedded_state) @ self._device) /self._dim
         
         return action_q, device_q
     
@@ -222,7 +249,7 @@ class QModel():
         Returns:
             Tensor: Actions model
         """
-        return self._action
+        return self._action.T
     
     def to(self, device : torch.device)-> None:
         self._action.to(device)

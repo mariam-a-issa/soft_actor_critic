@@ -144,6 +144,7 @@ class Alpha:
         self._max_steps = max_steps
         self._auto_tune = auto_tune
         self._alpha_value = alpha_value
+        self._current_step = 0
         
     def __call__(self) -> Tensor:
         """Will give the current alpha"""
@@ -151,7 +152,7 @@ class Alpha:
             return self._alpha_value
         return self._log_alpha.exp()
     
-    def sigmoid_target_entropy(self, current_step : int) -> float:
+    def sigmoid_target_entropy(self) -> float:
         """Will use sigmoid decay to calculate the target entropy
 
         Args:
@@ -160,9 +161,12 @@ class Alpha:
         Returns:
             float: The current target entropy
         """
-        
-        x = current_step / self._max_steps  # Normalize step to [0,1]
+        self._current_step += 1
+        x = self._current_step / self._max_steps  # Normalize step to [0,1]
         return self._start + (self._end - self._start) / (1 + math.exp(-self._slope * (x - self._midpoint)))
+    
+    def parameters(self) -> list[Tensor]:
+        return [self._log_alpha]
     
     def to(self, device : torch.device) -> None:
         """Will move the alpha parameter to the device

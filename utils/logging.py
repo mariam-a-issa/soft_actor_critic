@@ -1,5 +1,7 @@
-from torch.utils.tensorboard import SummaryWriter
+import csv
 from pathlib import Path
+
+from torch.utils.tensorboard import SummaryWriter
 import wandb as wb
 
 WANDB_PROJECT_NAME = 'SAC in NASIM MIL'
@@ -8,20 +10,21 @@ class LearningLogger:
     """Creates a logging class to handle specific types of logging for data about the perforamnce of the model"""
     _instance = None
     
-    def __new__(cls, base_dir : str = None, group_name : str = None, job_name : str = None, run_name : str = None, hparams_config : dict = None, tensorboard : bool = True, wandb : bool = True):
+    def __new__(cls, base_dir : str = None, group_name : str = None, job_name : str = None, run_name : str = None, hparams_config : dict = None, tensorboard : bool = True, wandb : bool = True, save_csv : bool = False):
         """Allows logger to follow singleton design"""
         if cls._instance is None or base_dir is not None or group_name is not None or job_name is not None or run_name is not None: #Build new instance when no new one exists or when the logging data is being changed
             cls._instance = super(LearningLogger, cls).__new__(cls)
-            cls._instance._initialize(base_dir, group_name, job_name, run_name, hparams_config, tensorboard, wandb)
+            cls._instance._initialize(base_dir, group_name, job_name, run_name, hparams_config, tensorboard, wandb, save_csv)
         return cls._instance
     
-    def _initialize(self, base_dir : str, group_name : str, job_name : str, run_name : str, hparams_config : dict, tensorboard : bool = True, wand : bool = True):
+    def _initialize(self, base_dir : str, group_name : str, job_name : str, run_name : str, hparams_config : dict, tensorboard : bool = True, wand : bool = True, save_csv : bool = False):
         """Will create tools used for logging. Done in _initialize instead of __init__ for the singleton to only do this when we are actually resetting in __new__"""
         self._loggers = dict()
         self._hparams = hparams_config #Can be used at the end of a run alongside metrics to log hparams
-        
+        save_path = Path(base_dir) / group_name / job_name / run_name
+
         if tensorboard:
-            tense_writer = SummaryWriter(Path(base_dir) / group_name / job_name / run_name)
+            tense_writer = SummaryWriter(save_path)
             self._loggers['tensorboard'] = tense_writer
         else:
             self._loggers['tensorboard'] = None
@@ -33,6 +36,9 @@ class LearningLogger:
             writer.define_metric('Episodic Reward', step_metric='Episode')
         else:
             self._loggers['wandb'] = None
+
+        if save_csv:
+            _csv_of_hparams(save_path, self._hparams)
             
         self._cur_step = 0
             
@@ -80,3 +86,14 @@ class LearningLogger:
                 
         if self._loggers['wandb']:
             self._loggers['wandb'].finish()
+
+def _csv_of_hparams(log_dir : Path, h_params_dict : dict):
+    """Creates a csv at the log dir with the given hyperparameters"""
+
+    file = log_dir / 'hparams.csv'
+    file.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(file, 'w+') as csv_file:
+        writer = csv.writer(csv_file)
+        for key, value in h_params_dict.items():
+            writer.writerow([key, value])

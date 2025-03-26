@@ -1,1 +1,2 @@
-from .agents import create_nn_agent, create_hdc_agent, create_mil_nn_agent, create_mil_hdc_agent, Agent
+from .mil_hdc import MILHDCAgent
+from .agents import Agent

@@ -62,9 +62,15 @@ def permute_rows_by_shifts(matrix : Tensor, shifts : Tensor) -> Tensor:
     indices = torch.arange(M).view(1, M).expand(N, M)  # Create base indices for rows
     shifted_indices = (indices - shifts.unsqueeze(1)) % M  # Apply shifts (negative for right shift)
     
-    return matrix[torch.arange(N).unsqueeze(1), shifted_indices]  # Gather new indices
+    #Manipulation of memory with temp may not be needed?
+    temp = matrix.gather(1, shifted_indices)  # Gather before writing
+    matrix.copy_(temp)
 
-def permute_rows_by_shifts_matrix(matrix, shifts: Tensor):
+    del temp
+
+    return matrix  # Gather new indices
+
+def permute_rows_by_shifts_matrix(matrix : Tensor, shifts: Tensor):
     """
     Permutes each sub-matrix of shape (B, D) within the 3D tensor `matrix` along the last dimension.
 

@@ -1,24 +1,27 @@
 from copy import copy
 import os
 
+import torch
+
+from utils import Config
 from environment_run import train
 
 
-MAIN_EXPERIMENT_NAME = 'nasimemu-mil-alpha-stp100-aug-no-clean-id-seperate-encoders-autotune-alpha-graphattentionsimple'
+MAIN_EXPERIMENT_NAME = 'test'
 NUM_RUNS = 1
 OTHER_HPARAMS = { #Just the default params that may be different than the ones in the training file
     'hdc_agent' : True,
     'mil_agent' : True,
     'alpha_value' : .4, #The tempurature coefficient or scaling factor for the target entropy when autotuning 
     'autotune' : True,
-    'alpha_lr' : 3e-4,
-    'critic_lr' : 3e-4,
-    'policy_lr' : 3e-4,
+    'alpha_lr' : 1e-3,
+    'critic_lr' : 1e-3,
+    'policy_lr' : 1e-3,
     'hypervec_dim' : 4096,
     'hidden_size' : 128,
     'pos_enc_size' : 8,
     'grad_clip' : 5,
-    'sample_size' : 64,
+    'sample_size' : 256,
     'tau' : .005,
     'target_update' : 1,
     'seed' : None,
@@ -30,7 +33,8 @@ OTHER_HPARAMS = { #Just the default params that may be different than the ones i
     'max_steps' : 250000,
     'eval_frequency' : 10,
     'num_evals' : 5,
-    'tensorboard' : False,
+    'tensorboard' : True,
+    'save_csv' : True,
     'wandb' : False,
     'dynamic' : True,
     'target_start' : .8,
@@ -41,7 +45,7 @@ OTHER_HPARAMS = { #Just the default params that may be different than the ones i
     'num_heads' : 2,
     'graph' : False,
     'messages_passed' : 2,
-    'gpu' : False
+    'gpu' : True
 }
 
 def train_hyper_param(name : str, values : list[float], seeds : list[int]):
@@ -56,12 +60,22 @@ def train_hyper_param(name : str, values : list[float], seeds : list[int]):
             
             h_params['seed'] = seed
             
+            torch.cuda.memory._record_memory_history(
+                max_entries=10000
+            )
+
             try:
-                train(run_name = f'{name}({value})_seed({seed})', base_dir='runs', group_name = MAIN_EXPERIMENT_NAME, job_name = f'{name}_experiment', **h_params)
+                train(run_name = f'{name}({value})_seed({seed})', base_dir='runs', group_name = MAIN_EXPERIMENT_NAME, job_name = f'{name}_experiment', config=Config().with_updates(**h_params))
             except ValueError as e: 
                 f = open(f'runs/{MAIN_EXPERIMENT_NAME}/{name}_experiment/{name}({value})_seed({seed})/nan_v({value})_seed({seed}).txt', 'w', encoding='utf-8')
                 f.write('I have NaNed')
                 f.close()
+            except torch.OutOfMemoryError:
+                try:
+                    torch.cuda.memory._dump_snapshot(f"{'test'}.pickle")
+                except Exception as e:
+                    print(f"Failed to capture memory snapshot {e}")
+                torch.cuda.memory._record_memory_history(enabled=None)
 
 
 

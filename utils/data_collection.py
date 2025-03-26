@@ -2,7 +2,7 @@ from collections import deque
 from typing import NamedTuple
 import random
 import torch
-from torch_geometric.data import Data, Batch
+from torch_geometric.data import Batch
 from torch import tensor, Tensor
 from .tensor_organization import group_to_boundaries_torch
 
@@ -74,16 +74,15 @@ class MemoryBuffer:
 class DynamicMemoryBuffer():
     """Replay buffer where due to the dynamic size of the state, part of the state is collpased into the batch dim"""
     
-    def __init__(self, buffer_length : int, sample_size : int, random : random) -> None:
+    def __init__(self, buffer_length : int, sample_size : int) -> None:
         self._memory = deque(maxlen=buffer_length)
         self._sample_size = sample_size
-        self._random = random
     
     def sample(self) -> Transition:
         if len(self._memory) <= self._sample_size:
             sample = self._memory #sample will be a list of transitions
         else:
-            sample = self._random.sample(self._memory, self._sample_size)
+            sample = random.sample(self._memory, self._sample_size)
 
         state, action, next_state, reward, done, _, _, _, _ = zip(*sample)
         
@@ -109,16 +108,15 @@ class DynamicMemoryBuffer():
 class GraphMemoryBuffer():
     """A type of memory buffer that will retain graph represententatoins"""
     
-    def __init__(self, buffer_length : int, sample_size : int, random : random) -> None:
+    def __init__(self, buffer_length : int, sample_size : int) -> None:
         self._memory = deque(maxlen=buffer_length)
         self._sample_size = sample_size
-        self._random = random
         
     def sample(self) -> Transition:
         if len(self._memory) <= self._sample_size:
             sample = self._memory
         else:
-            sample = self._random.sample(self._memory, self._sample_size)
+            sample = random.sample(self._memory, self._sample_size)
             
         state, action, next_state, reward, done, _, _, _, _ = zip(*sample) #In this case state and next_state are tuples of Data
         cur_batch = Batch.from_data_list(state)
