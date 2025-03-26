@@ -4,7 +4,7 @@ from pathlib import Path
 from torch.utils.tensorboard import SummaryWriter
 import wandb as wb
 
-WANDB_PROJECT_NAME = 'SAC in NASIM MIL'
+WANDB_PROJECT_NAME = 'SAC in NASIM MIL New'
 
 class LearningLogger:
     """Creates a logging class to handle specific types of logging for data about the perforamnce of the model"""

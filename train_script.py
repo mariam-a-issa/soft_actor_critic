@@ -81,4 +81,4 @@ def train_hyper_param(name : str, values : list[float], seeds : list[int]):
 
 if __name__ == '__main__':
     os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8' #Needed since training will have to be deterministic. More info at https://docs.nvidia.com/cuda/cublas/index.html#cublasApi_reproducibility
-    train_hyper_param('target_start', [.8], [0, 1, 2])
+    train_hyper_param('critic_lr', [.8], [0, 1, 2])
