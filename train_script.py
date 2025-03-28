@@ -7,13 +7,13 @@ from utils import Config
 from environment_run import train
 
 
-MAIN_EXPERIMENT_NAME = 'nasimemu-medium-bind-encoding-standard-hparams-hdc'
+MAIN_EXPERIMENT_NAME = 'nasimemu-medium-bind-encoding-no-autotune'
 NUM_RUNS = 1
 OTHER_HPARAMS = { #Just the default params that may be different than the ones in the training file
     'hdc_agent' : True,
     'mil_agent' : True,
     'alpha_value' : .4, #The tempurature coefficient or scaling factor for the target entropy when autotuning 
-    'autotune' : True,
+    'autotune' : False,
     'alpha_lr' : 3e-4,
     'critic_lr' : 3e-4,
     'policy_lr' : 3e-4,

@@ -149,7 +149,7 @@ class Alpha:
     def __call__(self) -> Tensor:
         """Will give the current alpha"""
         if not self._auto_tune:
-            return self._alpha_value
+            return torch.tensor(self._alpha_value, device='cpu')
         return self._log_alpha.exp()
     
     def sigmoid_target_entropy(self) -> float:

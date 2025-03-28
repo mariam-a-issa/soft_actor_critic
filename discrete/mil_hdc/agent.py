@@ -80,11 +80,6 @@ class MILHDCAgent(Agent):
                                         self._config.discount,
                                         trans.done)
         
-        alpha_loss = sac.alpha_loss(cur_prob,
-                                    cur_log_prob,
-                                    self._alpha(),
-                                    self._alpha.sigmoid_target_entropy())
-        
         #Need to get the vector corresponding to the chosen action which would involve doing integer divison between the action index and the total number of devices in a state    
         #Find what devices correspond to the choosen action and then select only the device embedding for that action
         
@@ -110,9 +105,16 @@ class MILHDCAgent(Agent):
         policy_loss.backward()
         self._policy_optim.step()
 
-        self._alpha_optim.zero_grad()
-        alpha_loss.backward()
-        self._alpha_optim.step()
+        if self._config.autotune:
+            alpha_loss = sac.alpha_loss(cur_prob,
+                            cur_log_prob,
+                            self._alpha(),
+                            self._alpha.sigmoid_target_entropy())
+            self._alpha_optim.zero_grad()
+            alpha_loss.backward()
+            self._alpha_optim.step()
+        else:
+            alpha_loss = torch.tensor(0, device='cpu')
         
         return {
             'Q1 Loss' : q1_loss.item(),
