@@ -7,16 +7,16 @@ from utils import Config
 from environment_run import train
 
 
-MAIN_EXPERIMENT_NAME = 'test'
+MAIN_EXPERIMENT_NAME = 'nasimemu-medium-bundle-encoding-standard-hparams-hdc'
 NUM_RUNS = 1
 OTHER_HPARAMS = { #Just the default params that may be different than the ones in the training file
     'hdc_agent' : True,
     'mil_agent' : True,
     'alpha_value' : .4, #The tempurature coefficient or scaling factor for the target entropy when autotuning 
     'autotune' : True,
-    'alpha_lr' : 1e-3,
-    'critic_lr' : 1e-3,
-    'policy_lr' : 1e-3,
+    'alpha_lr' : 3e-4,
+    'critic_lr' : 3e-4,
+    'policy_lr' : 3e-4,
     'hypervec_dim' : 4096,
     'hidden_size' : 128,
     'pos_enc_size' : 8,
@@ -81,4 +81,4 @@ def train_hyper_param(name : str, values : list[float], seeds : list[int]):
 
 if __name__ == '__main__':
     os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8' #Needed since training will have to be deterministic. More info at https://docs.nvidia.com/cuda/cublas/index.html#cublasApi_reproducibility
-    train_hyper_param('critic_lr', [1e-2, 5e-3, 1e-3, 5e-4], [0, 1, 2])
+    train_hyper_param('critic_lr', [3e-4], [0, 1, 2])
