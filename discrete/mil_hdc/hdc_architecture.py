@@ -207,6 +207,9 @@ class QModel():
 
         action_q = torch.real(torch.conj(embedded_state) @ self._action) / self._dim
         device_q = torch.real(torch.conj(embedded_state) @ self._device) /self._dim
+
+        num_devices = torch.diff(state_index)
+        action_q /= num_devices.unsqueeze(dim=-1) #Need to normalize q value as we are using bundeling for the encoding
         
         return action_q, device_q
     
