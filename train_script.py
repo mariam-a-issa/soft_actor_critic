@@ -21,7 +21,7 @@ OTHER_HPARAMS = { #Just the default params that may be different than the ones i
     'hidden_size' : 128,
     'pos_enc_size' : 8,
     'grad_clip' : 5,
-    'sample_size' : 256,
+    'sample_size' : 512,
     'tau' : .005,
     'target_update' : 1,
     'seed' : None,
@@ -33,9 +33,9 @@ OTHER_HPARAMS = { #Just the default params that may be different than the ones i
     'max_steps' : 250000,
     'eval_frequency' : 10,
     'num_evals' : 5,
-    'tensorboard' : True,
-    'save_csv' : True,
-    'wandb' : False,
+    'tensorboard' : False,
+    'save_csv' : False,
+    'wandb' : True,
     'dynamic' : True,
     'target_start' : .8,
     'target_end' : .2,
@@ -81,4 +81,4 @@ def train_hyper_param(name : str, values : list[float], seeds : list[int]):
 
 if __name__ == '__main__':
     os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8' #Needed since training will have to be deterministic. More info at https://docs.nvidia.com/cuda/cublas/index.html#cublasApi_reproducibility
-    train_hyper_param('critic_lr', [.8], [0, 1, 2])
+    train_hyper_param('critic_lr', [1e-2, 5e-3, 1e-3, 5e-4], [0, 1, 2])
