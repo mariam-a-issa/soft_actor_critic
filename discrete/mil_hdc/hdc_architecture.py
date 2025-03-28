@@ -57,9 +57,9 @@ class Encoder:
         
         #Bind them all together by adding them then exp
         batch_index = generate_batch_index(state_index)
-        grouped_products : Tensor = torch.zeros((batch_index.max() + 1, encoded_devices.shape[1]), dtype=torch.cfloat)
-        devices_permuted = torch.exp(1j * devices_permuted)
+        grouped_products : Tensor = torch.zeros((batch_index.max() + 1, encoded_devices.shape[1]), dtype=encoded_devices.dtype)
         grouped_products.index_add_(0, batch_index, devices_permuted)
+        grouped_products = torch.exp(1j * grouped_products)
         grouped_products = grouped_products[batch_index] 
 
         #Repermute them so that the specific device aligns
@@ -208,8 +208,8 @@ class QModel():
         action_q = torch.real(torch.conj(embedded_state) @ self._action) / self._dim
         device_q = torch.real(torch.conj(embedded_state) @ self._device) /self._dim
 
-        num_devices = torch.diff(state_index)
-        action_q /= num_devices.unsqueeze(dim=-1)[batch_index] #Need to normalize q value as we are using bundeling for the encoding
+        #num_devices = torch.diff(state_index)
+        #action_q /= num_devices.unsqueeze(dim=-1)[batch_index] #Need to normalize q value as we are using bundeling for the encoding
         
         return action_q, device_q
     
