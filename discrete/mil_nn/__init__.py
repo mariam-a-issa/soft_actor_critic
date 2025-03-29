@@ -1,1 +1,1 @@
-from .mil_implementation import Actor, QFunction, QFunctionTarget, Embedding, Alpha, AttentionEmbedding, GraphEmbedding
+from .agent import MILNNAgent

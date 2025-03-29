@@ -6,7 +6,7 @@ from torch import optim
 
 from utils import DynamicMemoryBuffer, Transition, Config
 from .hdc_architecture import Encoder, Actor, QFunction, QFunctionTarget
-from ..mil_nn import Alpha
+from ..mil_nn.mil_implementation import Alpha
 from ..agents import Agent
 from .. import sac
 
@@ -29,12 +29,12 @@ class MILHDCAgent(Agent):
         self._q_target = QFunctionTarget(qfunction=self._q_func, 
                                          tau=config.tau)
         
-        self._alpha = Alpha(start=config.target_start, 
-                            end=config.target_end, 
-                            midpoint=config.midpoint, 
-                            slope=config.slope, 
+        self._alpha = Alpha(start=config.target_entropy_start, 
+                            end=config.target_entropy_end, 
+                            midpoint=config.target_entropy_midpoint, 
+                            slope=config.target_entropy_slope, 
                             max_steps=config.max_steps,
-                            auto_tune=config.autotune, 
+                            autotune=config.autotune, 
                             alpha_value=config.alpha_value)
         
         self._policy_optim = optim.Adam(self._policy.parameters(), lr=config.policy_lr)
@@ -42,6 +42,14 @@ class MILHDCAgent(Agent):
         
         self._action_dim = action_dim
         self._config = config
+
+        if config.gpu:
+            device = torch.device(f'cuda:{config.gpu_device}')
+        else:
+            device = torch.device('cpu')
+
+        for obj in [self._q_embedding, self._policy_embedding, self._q_func, self._q_func_target, self._policy, self._alpha]:
+            obj.to(device)
 
         
     def param_update(self) -> dict[str : float]:

@@ -15,12 +15,12 @@ from utils import EPS, LearningLogger
 class Embedding(nn.Module):
     
     def __init__(self, 
-                emb_dim : int,
+                embed_dim : int,
                 pos_enc_dim : int, #This needs to be even
-                device_dim : int) -> None:
+                node_dim : int) -> None:
         super().__init__()
-        self._embeding = nn.Sequential(nn.Linear(device_dim + pos_enc_dim, emb_dim), nn.LeakyReLU())
-        self._inner = nn.Sequential(nn.Linear(2 * emb_dim, emb_dim), nn.LeakyReLU()) #2 * for both the mean and the max
+        self._embeding = nn.Sequential(nn.Linear(node_dim + pos_enc_dim, embed_dim), nn.LeakyReLU())
+        self._inner = nn.Sequential(nn.Linear(2 * embed_dim, embed_dim), nn.LeakyReLU()) #2 * for both the mean and the max
         self._pos_enc_dim = pos_enc_dim
         
     def forward(self, states : Tensor, state_index : Tensor) -> tuple[Tensor, Tensor]:
@@ -50,14 +50,14 @@ class Embedding(nn.Module):
 class AttentionEmbedding(nn.Module):
     
     def __init__(self,
-                 emb_dim : int,
+                 embed_dim : int,
                  pos_enc_dim : int,
-                 device_dim : int,
+                 node_dim : int,
                  num_heads : int) -> None:
         super().__init__()
-        self._emb_dim = emb_dim
+        self._emb_dim = embed_dim
         self._pos_enc_dim = pos_enc_dim
-        self._embedding = nn.Sequential(nn.Linear(device_dim + pos_enc_dim, self._emb_dim), nn.LeakyReLU())
+        self._embedding = nn.Sequential(nn.Linear(node_dim + pos_enc_dim, self._emb_dim), nn.LeakyReLU())
         self._mha = nn.MultiheadAttention(self._emb_dim, num_heads, batch_first=True)
         self._norm = nn.LayerNorm(self._emb_dim)
         
@@ -90,13 +90,13 @@ class AttentionEmbedding(nn.Module):
 class GraphEmbedding(nn.Module):
     
     def __init__(self,
-                 emb_dim : int,
+                 embed_dim : int,
                  pos_enc_dim : int,
-                 device_dim : int,
+                 node_dim : int,
                  message_passes : int) -> None:
         super().__init__()
-        self._embedding = nn.Sequential(nn.Linear(device_dim + pos_enc_dim, emb_dim), nn.LeakyReLU())
-        self._gnn = MultiMessagePassing(message_passes, emb_dim)
+        self._embedding = nn.Sequential(nn.Linear(node_dim + pos_enc_dim, embed_dim), nn.LeakyReLU())
+        self._gnn = MultiMessagePassing(message_passes, embed_dim)
         self._pos_enc_dim = pos_enc_dim
         
     def forward(self, states : Batch, state_index : Tensor) -> tuple[Tensor, Tensor]:
@@ -124,7 +124,7 @@ class Alpha:
                  midpoint : float,
                  slope : float,
                  max_steps : int,
-                 auto_tune : bool = False,
+                 autotune : bool = False,
                  alpha_value : float = None):
         """
         Args:
@@ -142,13 +142,13 @@ class Alpha:
         self._slope = slope
         self._log_alpha = torch.zeros(1, requires_grad=True)
         self._max_steps = max_steps
-        self._auto_tune = auto_tune
+        self._autotune = autotune
         self._alpha_value = alpha_value
         self._current_step = 0
         
     def __call__(self) -> Tensor:
         """Will give the current alpha"""
-        if not self._auto_tune:
+        if not self._autotune:
             return torch.tensor(self._alpha_value, device='cpu')
         return self._log_alpha.exp()
     

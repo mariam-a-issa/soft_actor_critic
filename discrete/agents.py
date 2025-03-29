@@ -628,7 +628,11 @@ class Agent(ABC):
         pass
     
     def update(self, steps : int) -> None:
-        """Will perform the approaite update for the agent given the specific amount of steps"""
+        """Will update the parameters of the models according to the current step in training
+
+        Args:
+            steps (int): The current step in training
+        """
         if steps % self._update_frequency == 0:
             
             log_dicts = []
@@ -641,8 +645,15 @@ class Agent(ABC):
         if steps % self._target_update == 0:
             self.target_param_update
 
-    def calc_grad_norm(parameters : Iterable[Tensor]) -> Tensor:
-        """Will calculate the gradient norm of the parameters"""
+    def calc_grad_norm(self, parameters : Iterable[Tensor]) -> float:
+        """Will calculate the norm of the gradient across the parameters
+
+        Args:
+            parameters (Iterable[Tensor]): Parameters of a given network
+
+        Returns:
+            float: The norm of the parameters
+        """
         total_norm = 0
         for p in parameters:
             param_norm = p.grad.detach().data.norm(2)
@@ -650,7 +661,14 @@ class Agent(ABC):
         return total_norm ** 0.5
     
     
-    def polyak_average(actual_params : Iterable[Tensor], target_params : Iterable[Tensor], tau) -> None:
+    def polyak_average(self, actual_params : Iterable[Tensor], target_params : Iterable[Tensor], tau) -> None:
+        """Will do a polyak average to update to update the target parameters given the actual parameters
+
+        Args:
+            actual_params (Iterable[Tensor]): Used to update
+            target_params (Iterable[Tensor]): Will be updated
+            tau (_type_): How much to update
+        """
         for param, target_param in zip(actual_params, target_params):
                 target_param.data.copy_(tau * param.data + (1 - tau) * target_param.data)
 
