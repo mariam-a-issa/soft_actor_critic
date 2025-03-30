@@ -4,7 +4,7 @@ import os
 import torch
 
 from utils import Config
-from environment_run import train
+from training_pipeline import train
 
 
 MAIN_EXPERIMENT_NAME = 'nasimemu-medium-bind-encoding-autotune-less-aggressive'

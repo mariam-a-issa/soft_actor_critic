@@ -6,7 +6,7 @@ import torch
 from torch_geometric.data import Data, Batch
 
 from utils import GraphMemoryBuffer, DynamicMemoryBuffer, Transition, Config, group_to_boundaries_torch
-from .mil_implementation import AttentionEmbedding, GraphEmbedding, Embedding, Actor, QFunction, QFunctionTarget, Alpha
+from .implementation import AttentionEmbedding, GraphEmbedding, Embedding, Actor, QFunction, QFunctionTarget, Alpha
 from ..agents import Agent
 from .. import sac
 

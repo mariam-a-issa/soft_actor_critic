@@ -5,8 +5,8 @@ import torch
 from torch import optim
 
 from utils import DynamicMemoryBuffer, Transition, Config
-from .hdc_architecture import Encoder, Actor, QFunction, QFunctionTarget
-from ..mil_nn.mil_implementation import Alpha
+from .implementation import Encoder, Actor, QFunction, QFunctionTarget
+from ..mil_nn.implementation import Alpha
 from ..agents import Agent
 from .. import sac
 
