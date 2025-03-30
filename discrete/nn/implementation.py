@@ -6,7 +6,7 @@ from torch.distributions import Categorical
 from torch.nn import functional as F
 from torch.nn.utils import clip_grad_norm_
 
-from .base_nn import BaseNN, pad
+from .architecture import BaseNN, pad
 from utils.data_collection import Transition
 from utils import MAX_ROWS, NEG_INF
 

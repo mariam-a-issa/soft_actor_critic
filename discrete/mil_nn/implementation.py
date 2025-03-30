@@ -9,8 +9,9 @@ import torch.nn.functional as F
 from torch.distributions import Categorical
 from torch_geometric.data import Data, Batch
 
-from .architecture import positional_encoding, MultiMessagePassingWithAttention, MultiMessagePassing
 from utils import EPS, LearningLogger
+from .architecture import positional_encoding, MultiMessagePassingWithAttention, MultiMessagePassing
+from ..mil_utils import reshape
 
 class Embedding(nn.Module):
     
@@ -71,7 +72,7 @@ class AttentionEmbedding(nn.Module):
         states = torch.cat((states, pos_enc), dim = 1)
         embed_states = self._embedding(states)
         
-        reshape_embed_states = _reshape(embed_states, batch_index, self._emb_dim, filler_val=0).view(torch.unique(batch_index).numel(), -1, self._emb_dim) #batch_size x seq_length x embd size
+        reshape_embed_states = reshape(embed_states, batch_index, self._emb_dim, filler_val=0).view(torch.unique(batch_index).numel(), -1, self._emb_dim) #batch_size x seq_length x embd size
         attn_output, _ = self._mha(reshape_embed_states, reshape_embed_states, reshape_embed_states)
         residual_output = attn_output + reshape_embed_states
         norm = self._norm(residual_output)
@@ -218,7 +219,7 @@ class Actor(nn.Module):
         """
         
         log_probs = self(embed_states, batch_index)
-        log_probs_reshape = _reshape(log_probs, batch_index, self._action_dim)
+        log_probs_reshape = reshape(log_probs, batch_index, self._action_dim)
         dist = Categorical(logits=log_probs_reshape)
         actions = dist.sample()
         probs = dist.probs
@@ -234,7 +235,7 @@ class Actor(nn.Module):
         
         """
         log_probs = self(embed_states, batch_index)
-        log_probs_reshape = _reshape(log_probs, batch_index, self._action_dim)
+        log_probs_reshape = reshape(log_probs, batch_index, self._action_dim)
         return torch.argmax(log_probs_reshape, dim=-1)
 
         
@@ -280,7 +281,7 @@ class QModel(nn.Module):
                                       f'{description} Min' : action_q.min(),
                                       f'{description} Std' : action_q.std()}, steps=LearningLogger().cur_step())
         
-        return _reshape(action_q, batch_index, self._action_dim, filler_val=0)
+        return reshape(action_q, batch_index, self._action_dim, filler_val=0)
 
 class QFunction(nn.Module):
     
@@ -316,34 +317,3 @@ class QFunctionTarget():
     
     def to(self, device : torch.device):
         self._target_q_function.to(device)
-
-def _reshape(logits : Tensor, batch_index : Tensor, action_dim : int, filler_val : float = -1e8) -> Tensor:
-    """Will reshape the logits from the form bmxa to bxma where m is the variable about of devices. Since it is variable, the rows will be padded with zeros when necessary
-    
-    embed_states: a bmxe matrix where b is the batch size, m is the variable size of devices in each part group of the batch and e is the embeding dimension
-    batch_index: bmx1, each element is the group that the element in the corresponding embed_state belongs to
-        
-    return: bxma matrix
-    
-    """
-    a = action_dim
-    b = batch_index.unique().numel()
-    max_d = torch.bincount(batch_index).max().item()
-
-    # Step 2: Compute positions within each group
-    device_counts = torch.zeros(b, dtype=torch.long).scatter_add_(
-        0, batch_index, torch.ones_like(batch_index)
-    )
-    device_offsets = torch.cumsum(
-        torch.cat([torch.tensor([0], dtype=torch.long), device_counts[:-1]]), dim=0
-    )
-
-    device_indices = (torch.arange(len(batch_index)) - device_offsets[batch_index]).long()
-
-    # Step 3: Prepare an output tensor with zeros
-    output = torch.zeros((b, max_d * a), dtype=logits.dtype) + filler_val
-    # Step 4: Place actions into the reshaped matrix
-    row_indices = batch_index
-    col_indices = (device_indices[:, None] * a + torch.arange(a)).flatten()
-
-    return output.index_put_((row_indices.repeat_interleave(a), col_indices), logits.flatten())
