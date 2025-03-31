@@ -1,16 +1,18 @@
 import torch
 from torch import Tensor
 
-def reshape(logits : Tensor, batch_index : Tensor, action_dim : int, filler_val : float = -1e8) -> Tensor:
-    """Will reshape the logits from the form bmxa to bxma where m is the variable about of devices. Since it is variable, the rows will be padded with zeros when necessary
+def reshape(values : Tensor, batch_index : Tensor, filler_val : float = -1e8) -> Tensor:
+    """Will reshape the values from the form bmxa to bxma where m is the variable about of nodes. Since it is variable, the rows will be padded with the given value when necessary
     
-    embed_states: a bmxe matrix where b is the batch size, m is the variable size of devices in each part group of the batch and e is the embeding dimension
-    batch_index: bmx1, each element is the group that the element in the corresponding embed_state belongs to
-        
-    return: bxma matrix
-    
+    Args:
+        Values (Tensor): A bmxe matrix where b is the batch size, m is the variable size of nodes in each part group of the batch and e is the values embedded dimension
+        batch_index (Tensor): bmx1, each element is the group that the element in the corresponding embed_state belongs to
+        filler_val (float): The value that will be used to fill empty elements of the matrix
+
+    Returns:
+        Tensor: bxma
     """
-    a = action_dim
+    a = values.shape[1]
     b = batch_index.unique().numel()
     max_d = torch.bincount(batch_index).max().item()
 
@@ -25,12 +27,12 @@ def reshape(logits : Tensor, batch_index : Tensor, action_dim : int, filler_val 
     device_indices = (torch.arange(len(batch_index)) - device_offsets[batch_index]).long()
 
     # Step 3: Prepare an output tensor with zeros
-    output : Tensor = torch.zeros((b, max_d * a), dtype=logits.dtype) + filler_val
+    output : Tensor = torch.zeros((b, max_d * a), dtype=values.dtype) + filler_val
     # Step 4: Place actions into the reshaped matrix
     row_indices = batch_index
     col_indices = (device_indices[:, None] * a + torch.arange(a)).flatten()
 
-    return output.index_put_((row_indices.repeat_interleave(a), col_indices), logits.flatten())
+    return output.index_put_((row_indices.repeat_interleave(a), col_indices), values.flatten())
 
 def generate_counting_tensor(ranges : Tensor) -> Tensor:
     """Will expand the ranges into indices counting from 0 to (a-b) where a and b are corresponding pairs in the array
@@ -61,14 +63,8 @@ def permute_rows_by_shifts(matrix : Tensor, shifts : Tensor) -> Tensor:
     N, M = matrix.shape  # Get matrix dimensions
     indices = torch.arange(M).view(1, M).expand(N, M)  # Create base indices for rows
     shifted_indices = (indices - shifts.unsqueeze(1)) % M  # Apply shifts (negative for right shift)
-    
-    #Manipulation of memory with temp may not be needed?
-    temp = matrix.gather(1, shifted_indices)  # Gather before writing
-    matrix.copy_(temp)
 
-    del temp
-
-    return matrix  # Gather new indices
+    return matrix.gather(1, shifted_indices)  # Gather new indices
 
 def permute_rows_by_shifts_matrix(matrix : Tensor, shifts: Tensor):
     """

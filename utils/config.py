@@ -78,7 +78,7 @@ class Config:
     explore_steps: int = 0
     """Number of initial random exploration steps before learning begins"""
     
-    grad_clip: int = 5
+    grad_clip: Optional[int] = None
     """Maximum gradient norm for clipping critic network"""
     
     learning_steps: int = 1

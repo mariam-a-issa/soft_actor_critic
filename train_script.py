@@ -11,9 +11,10 @@ MAIN_EXPERIMENT_NAME = 'nasimemu-medium-bind-encoding-autotune-less-aggressive'
 NUM_RUNS = 1
 OTHER_HPARAMS = { #Just the default params that may be different than the ones in the training file
     'environment_info' : {'id' : 'NASimEmu-v0', 'emulate' : False, 'scenario_name' : '/home/ian/projects/hd_sac/NetworkAttackSimulator/nasim/scenarios/benchmark/medium.yaml', 'step_limit' : 100, 'augment_with_action' : True},
-    'type_agent' : 'nn_mil',
+    'type_agent' : 'hdc_mil',
     'attention' : False,
-    'graph' : True
+    'graph' : False,
+    'wandb' : False
 }
 
 def train_hyper_param(name : str, values : list[float], seeds : list[int]):

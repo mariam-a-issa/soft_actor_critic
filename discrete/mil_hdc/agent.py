@@ -6,7 +6,6 @@ from torch import optim
 
 from utils import DynamicMemoryBuffer, Transition, Config
 from .implementation import Encoder, Actor, QFunction, QFunctionTarget
-from ..mil_nn.implementation import Alpha
 from ..agents import Agent
 from .. import sac
 
@@ -29,7 +28,7 @@ class MILHDCAgent(Agent):
         self._q_target = QFunctionTarget(qfunction=self._q_func, 
                                          tau=config.tau)
         
-        self._alpha = Alpha(start=config.target_entropy_start, 
+        self._alpha = sac.Alpha(start=config.target_entropy_start, 
                             end=config.target_entropy_end, 
                             midpoint=config.target_entropy_midpoint, 
                             slope=config.target_entropy_slope, 
@@ -48,7 +47,7 @@ class MILHDCAgent(Agent):
         else:
             device = torch.device('cpu')
 
-        for obj in [self._q_embedding, self._policy_embedding, self._q_func, self._q_func_target, self._policy, self._alpha]:
+        for obj in [self._embed, self._q_func, self._q_target, self._policy, self._alpha]:
             obj.to(device)
 
         

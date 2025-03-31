@@ -8,7 +8,7 @@ from torch.distributions import Categorical
 from copy import deepcopy
 
 from utils import LearningLogger, EPS
-from ..mil_utils import generate_batch_index, generate_counting_tensor, permute_rows_by_shifts, permute_rows_by_shifts_matrix, reshape
+from ..mil_utils import generate_batch_index, generate_counting_tensor, permute_rows_by_shifts, reshape
 
 #TODO Switch it up so that it does not bind them down at the end and only binds them to gether then permutes
 class Encoder:
@@ -91,7 +91,6 @@ class Actor(nn.Module):
         self._device.weight = nn.Parameter(torch.zeros(1, dim, dtype=torch.cfloat))
         
         self._dim = dim
-        self._action_dim = action_dim
         
     def forward(self, embedded_state : Tensor, batch_index : Tensor, state_index : Tensor) -> Tensor:
         """Will return the values after
@@ -141,7 +140,7 @@ class Actor(nn.Module):
         """
         
         log_probs = self(embed_states, batch_index, state_index)
-        log_probs_reshape = reshape(log_probs, batch_index, self._action_dim)
+        log_probs_reshape = reshape(log_probs, batch_index)
         dist = Categorical(logits=log_probs_reshape)
         actions = dist.sample()
         probs = dist.probs
@@ -157,7 +156,7 @@ class Actor(nn.Module):
         
         """
         log_probs = self(embed_states, batch_index, state_index)
-        log_probs_reshape = reshape(log_probs, batch_index, self._action_dim)
+        log_probs_reshape = reshape(log_probs, batch_index)
         return torch.argmax(log_probs_reshape, dim=-1)
     
     
@@ -183,7 +182,6 @@ class QModel():
         self._device = torch.zeros(dim, 2, dtype=torch.cfloat, requires_grad=False)
         
         self._dim = dim
-        self._action_dim = action_dim
         
     def _values(self, embedded_state : Tensor, batch_index : Tensor, state_index : Tensor) -> tuple[Tensor, Tensor]:
         """Will get the Q values for the specific actions and then for the device
@@ -244,7 +242,7 @@ class QModel():
                                       f'{description} Min' : action_q.min(),
                                       f'{description} Std' : action_q.std()}, steps=LearningLogger().cur_step())
             
-        return reshape(action_q, batch_index, self._action_dim, filler_val=0)
+        return reshape(action_q, batch_index, filler_val=0)
     
     def parameters(self) -> Tensor:
         """Will return the model hypervector 

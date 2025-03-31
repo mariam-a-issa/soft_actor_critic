@@ -6,7 +6,7 @@ import torch
 from torch_geometric.data import Data, Batch
 
 from utils import GraphMemoryBuffer, DynamicMemoryBuffer, Transition, Config, group_to_boundaries_torch
-from .implementation import AttentionEmbedding, GraphEmbedding, Embedding, Actor, QFunction, QFunctionTarget, Alpha
+from .implementation import AttentionEmbedding, GraphEmbedding, Embedding, Actor, QFunction, QFunctionTarget
 from ..agents import Agent
 from .. import sac
 
@@ -58,7 +58,7 @@ class MILNNAgent(Agent):
         self._q_func = QFunction(embed_dim=config.hidden_dim, action_dim=action_dim)
         self._q_func_target = QFunctionTarget(self._q_func, tau=config.tau)
         self._policy = Actor(embed_dim=config.hidden_dim, action_dim=action_dim)
-        self._alpha = Alpha(start=config.target_entropy_start, 
+        self._alpha = sac.Alpha(start=config.target_entropy_start, 
                             end=config.target_entropy_end, 
                             midpoint=config.target_entropy_midpoint, 
                             slope=config.target_entropy_slope, 
