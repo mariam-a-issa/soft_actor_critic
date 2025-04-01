@@ -10,8 +10,8 @@ from torch.distributions import Categorical
 from torch_geometric.data import Data, Batch
 
 from utils import EPS, LearningLogger
-from .architecture import positional_encoding, MultiMessagePassingWithAttention, MultiMessagePassing
-from ..model_utils import reshape
+from .architecture import MultiMessagePassingWithAttention, MultiMessagePassing
+from ..model_utils import reshape, positional_encoding
 
 class Embedding(nn.Module):
     

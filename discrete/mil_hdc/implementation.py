@@ -8,14 +8,15 @@ from torch.distributions import Categorical
 from copy import deepcopy
 
 from utils import LearningLogger, EPS
-from ..model_utils import generate_batch_index, generate_counting_tensor, permute_rows_by_shifts, reshape
+from ..model_utils import generate_batch_index, generate_counting_tensor, permute_rows_by_shifts, reshape, positional_encoding
 
 #TODO Switch it up so that it does not bind them down at the end and only binds them to gether then permutes
 class Encoder:
     
     def __init__(self,
                  dim : int, 
-                 node_dim : int) -> None:
+                 node_dim : int,
+                 pos_enc_dim : int) -> None:
         """Will create an HDC encoder
 
         Args:
@@ -24,9 +25,10 @@ class Encoder:
             distribution (str): The distribution used to build the RHFF basis vectors
         """
         
-        self._s_hdvec = torch.randn(node_dim, dim, dtype=torch.float32) 
+        self._s_hdvec = torch.randn(node_dim + pos_enc_dim, dim, dtype=torch.float32) 
         self._bias = 2 * math.pi * torch.rand(dim, dtype=torch.float32)
         self._dim = dim
+        self._pos_enc_dim = pos_enc_dim
         
         
     def __call__(self, nodes : Tensor, state_index : Tensor) -> tuple[Tensor, Tensor]:
@@ -50,22 +52,27 @@ class Encoder:
         # write = torch.ones(len(torch.unique(batch_index)), self._dim, dtype = torch.cfloat)
         # write.scatter_reduce_(dim=0, src=devices_permuted, index=batch_index.view(-1, 1).expand(-1 , self._dim), reduce='prod')
         
-        #Encode and permute the devices
+        #Encode the devices
+        pos_index = torch.cat([torch.arange(start = 1, end = state_index[i + 1] - state_index[i] + 1) for i in range(len(state_index) - 1)])
+        pos_enc = positional_encoding(pos_index, self._pos_enc_dim)
+        nodes = torch.cat((nodes, pos_enc), dim = 1)
         encoded_devices = nodes @ self._s_hdvec + self._bias
-        permute_vector = generate_counting_tensor(state_index)
-        devices_permuted = permute_rows_by_shifts(encoded_devices, permute_vector)
+        #index_vector = generate_counting_tensor(state_index)
+        
+        #devices_permuted = permute_rows_by_shifts(encoded_devices, permute_vector)
         
         #Bind them all together by adding them then exp
         batch_index = generate_batch_index(state_index)
-        grouped_products : Tensor = torch.zeros((batch_index.max() + 1, encoded_devices.shape[1]), dtype=encoded_devices.dtype)
-        grouped_products.index_add_(0, batch_index, devices_permuted)
-        grouped_products = torch.exp(1j * grouped_products)
-        grouped_products = grouped_products[batch_index] 
+        grouped_products : Tensor = torch.zeros((batch_index.max() + 1, encoded_devices.shape[1]), dtype=torch.cfloat)
+        encoded_devices = torch.exp(1j * encoded_devices)
+        grouped_products.index_add_(0, batch_index, encoded_devices)
+        grouped_products = grouped_products[batch_index]
+        grouped_products *= encoded_devices
 
         #Repermute them so that the specific device aligns
-        final_encode = permute_rows_by_shifts(grouped_products, -1 * permute_vector)
+        #final_encode = permute_rows_by_shifts(grouped_products, -1 * index_vector)
         
-        return final_encode, batch_index
+        return grouped_products, batch_index
     
     def to(self, device : torch.device) -> None:
         self._s_hdvec.to(device)

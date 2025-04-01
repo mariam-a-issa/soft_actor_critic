@@ -17,7 +17,8 @@ class MILHDCAgent(Agent):
                                            sample_size=config.sample_size)
         
         self._embed = Encoder(dim=config.hypervec_dim, 
-                              node_dim=node_dim)
+                              node_dim=node_dim,
+                              pos_enc_dim=config.pos_enc_dim)
         
         self._q_func = QFunction(embed_dim=config.hypervec_dim, 
                                  action_dim=action_dim)
