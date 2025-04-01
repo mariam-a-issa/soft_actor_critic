@@ -34,6 +34,23 @@ def reshape(values : Tensor, batch_index : Tensor, filler_val : float = -1e8) ->
 
     return output.index_put_((row_indices.repeat_interleave(a), col_indices), values.flatten())
 
+def pad(state : Tensor | list[Tensor], input_size : int) -> Tensor:
+    """Will pad the state tensor correctly. Note that here we consider either a single matrix or a batch list of matrices. 
+       Either return a single vector representing the state or a matrix representing the batch of states"""
+    if isinstance(state, Tensor):
+        padded_state = torch.zeros(input_size)
+        state = state.flatten()
+        padded_state[:len(state)] = state
+        return padded_state
+    elif isinstance(state, list):
+        state = [s.flatten() for s in state] #Slow but need to do it here. Maybe move to data collection but then becomes tricky
+        padded_state = torch.zeros(input_size) #Need to pad first one to desired length
+        padded_state[:len(state[0])] = state[0]
+        state[0] = padded_state
+        return torch.nn.utils.rnn.pad_sequence(state, batch_first=True, padding_value=0)
+    else:
+        raise TypeError("Incorrect state representation for padding")
+
 def generate_counting_tensor(ranges : Tensor) -> Tensor:
     """Will expand the ranges into indices counting from 0 to (a-b) where a and b are corresponding pairs in the array
 

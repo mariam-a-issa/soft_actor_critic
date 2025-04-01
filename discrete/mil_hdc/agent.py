@@ -13,7 +13,7 @@ from .. import sac
 class MILHDCAgent(Agent):
     def __init__(self, node_dim : int, action_dim : int, config : Config):
         super().__init__(config.target_update, config.update_frequency, config.learning_steps)
-        self._memory = DynamicMemoryBuffer(buffer_length=config.buffer_size, 
+        self._memory = DynamicMemoryBuffer(buffer_size=config.buffer_size, 
                                            sample_size=config.sample_size)
         
         self._embed = Encoder(dim=config.hypervec_dim, 

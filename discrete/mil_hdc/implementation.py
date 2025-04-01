@@ -8,7 +8,7 @@ from torch.distributions import Categorical
 from copy import deepcopy
 
 from utils import LearningLogger, EPS
-from ..mil_utils import generate_batch_index, generate_counting_tensor, permute_rows_by_shifts, reshape
+from ..model_utils import generate_batch_index, generate_counting_tensor, permute_rows_by_shifts, reshape
 
 #TODO Switch it up so that it does not bind them down at the end and only binds them to gether then permutes
 class Encoder:

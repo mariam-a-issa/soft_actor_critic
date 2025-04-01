@@ -11,7 +11,7 @@ from torch_geometric.data import Data, Batch
 
 from utils import EPS, LearningLogger
 from .architecture import positional_encoding, MultiMessagePassingWithAttention, MultiMessagePassing
-from ..mil_utils import reshape
+from ..model_utils import reshape
 
 class Embedding(nn.Module):
     

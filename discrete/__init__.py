@@ -1,5 +1,6 @@
 from .mil_hdc import MILHDCAgent
 from .mil_nn import MILNNAgent
+from .nn import MLPNNAgent
 from .agents import Agent
 from utils import Config
 
@@ -7,7 +8,8 @@ def create_agent(node_dim : int, action_dim : int, config : Config) -> Agent:
 
     agent_dict = {
         'nn_mil' : MILNNAgent,
-        'hdc_mil' : MILHDCAgent
+        'hdc_mil' : MILHDCAgent,
+        'nn' : MLPNNAgent
     }
     
     try:

@@ -74,8 +74,8 @@ class MemoryBuffer:
 class DynamicMemoryBuffer():
     """Replay buffer where due to the dynamic size of the state, part of the state is collpased into the batch dim"""
     
-    def __init__(self, buffer_length : int, sample_size : int) -> None:
-        self._memory = deque(maxlen=buffer_length)
+    def __init__(self, buffer_size : int, sample_size : int) -> None:
+        self._memory = deque(maxlen=buffer_size)
         self._sample_size = sample_size
     
     def sample(self) -> Transition:

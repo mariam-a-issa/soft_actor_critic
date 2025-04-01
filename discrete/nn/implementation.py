@@ -6,7 +6,7 @@ from torch.distributions import Categorical
 from torch.nn import functional as F
 from torch.nn.utils import clip_grad_norm_
 
-from .architecture import BaseNN, pad
+from .architecture import BaseNN
 from utils.data_collection import Transition
 from utils import MAX_ROWS, NEG_INF
 
@@ -25,22 +25,17 @@ class QFunction:
                  alpha : 'Alpha',
                  lr : float,
                  discount : float,
-                 dynamic : bool,
                  grad_clip : float) -> None:
         
         """Will create a q function that will use two q models"""
         
-        if dynamic:
-            actual_input_size = MAX_ROWS * input_size
-            actual_output_size = MAX_ROWS * output_size
-        else:
-            actual_input_size = input_size
-            actual_output_size = output_size
-            
+        actual_input_size = MAX_ROWS * input_size
+        actual_output_size = MAX_ROWS * output_size
+        
         self._g_clip = grad_clip
         
-        self._q1 = BaseNN(actual_input_size, actual_output_size, hidden_size, id=1)
-        self._q2 = BaseNN(actual_input_size, actual_output_size, hidden_size, id=2)
+        self._q1 = BaseNN(actual_input_size, actual_output_size, [hidden_size, hidden_size], id=1)
+        self._q2 = BaseNN(actual_input_size, actual_output_size, [hidden_size, hidden_size], id=2)
         
         self._optim1 = optim.Adam(self._q1.parameters(), lr=lr, eps=_EPS)
         self._optim2 = optim.Adam(self._q2.parameters(), lr=lr, eps=_EPS)
@@ -56,7 +51,6 @@ class QFunction:
         self._state_s = input_size
         self._state_act_s = actual_input_size
         
-        self._dynamic = dynamic
 
     def set_actor(self, actor : 'Actor') -> None:
         """Will set the actor used for parameter updates"""
@@ -197,23 +191,18 @@ class Actor(BaseNN):
     def __init__(self, 
                  input_size: int,
                  output_size: int, 
-                 hidden_size,
+                 hidden_size : int,
                  target : QFunctionTarget, 
                  alpha : 'Alpha',
                  lr : float,
-                 dynamic : bool, 
                  grad_clip : float) -> None:
         
-        if dynamic:
-            actual_input_size = MAX_ROWS * input_size
-            actual_output_size = MAX_ROWS * output_size
-        else:
-            actual_input_size = input_size
-            actual_output_size = output_size
+        actual_input_size = MAX_ROWS * input_size
+        actual_output_size = MAX_ROWS * output_size
             
         self._g_clip = grad_clip
             
-        super().__init__(actual_input_size, actual_output_size, hidden_size)
+        super().__init__(actual_input_size, actual_output_size, [hidden_size, hidden_size])
         
         self._q_func = target
         self._alpha = alpha
@@ -224,8 +213,6 @@ class Actor(BaseNN):
         
         self._state_s = input_size
         self._state_act_s = actual_input_size
-        
-        self._dynamic = dynamic
 
     def forward(self, state : Tensor, num_devices : Tensor = None, batch_size : int = None) -> tuple[Tensor]:
         """Will give the action, log_prob, and action_probs of action"""
@@ -245,7 +232,7 @@ class Actor(BaseNN):
     
     def _mask_func(self, batch_size : int, logits : Tensor, mask_num : float, num_devices : Tensor) -> Tensor:
         # Create an index tensor for each row, broadcast to match the size of matrix         # [1, 2, 3, ... i]
-        row_indices = torch.arange(logits.size(-1)).unsqueeze(0).expand(batch_size, -1)   # [1, 2, 3  ... i]
+        row_indices = torch.arange(logits.size(-1)).unsqueeze(0).expand(batch_size, -1)      # [1, 2, 3  ... i]
         # Use broadcasting to create a boolean mask                                          # ^  
         num_devices *= self._action_s                                                        # |
         mask = row_indices < num_devices.unsqueeze(1)                                        # |_ Then create a mask of same dimensions as this matrix where True at indicies are less than action size per device times device 
