@@ -53,24 +53,21 @@ class Encoder:
         # write.scatter_reduce_(dim=0, src=devices_permuted, index=batch_index.view(-1, 1).expand(-1 , self._dim), reduce='prod')
         
         #Encode the devices
-        pos_index = torch.cat([torch.arange(start = 1, end = state_index[i + 1] - state_index[i] + 1) for i in range(len(state_index) - 1)])
-        pos_enc = positional_encoding(pos_index, self._pos_enc_dim)
+        index_vector = generate_counting_tensor(state_index)
+        pos_enc = positional_encoding(index_vector, self._pos_enc_dim)
         nodes = torch.cat((nodes, pos_enc), dim = 1)
         encoded_devices = nodes @ self._s_hdvec + self._bias
-        #index_vector = generate_counting_tensor(state_index)
-        
-        #devices_permuted = permute_rows_by_shifts(encoded_devices, permute_vector)
+        devices_permuted = permute_rows_by_shifts(encoded_devices, index_vector)
         
         #Bind them all together by adding them then exp
         batch_index = generate_batch_index(state_index)
-        grouped_products : Tensor = torch.zeros((batch_index.max() + 1, encoded_devices.shape[1]), dtype=torch.cfloat)
-        encoded_devices = torch.exp(1j * encoded_devices)
-        grouped_products.index_add_(0, batch_index, encoded_devices)
+        grouped_products : Tensor = torch.zeros((batch_index.max() + 1, devices_permuted.shape[1]), dtype=devices_permuted.dtype)
+        grouped_products.index_add_(0, batch_index, devices_permuted)
+        grouped_products = torch.exp(1j * grouped_products)
         grouped_products = grouped_products[batch_index]
-        grouped_products *= encoded_devices
 
         #Repermute them so that the specific device aligns
-        #final_encode = permute_rows_by_shifts(grouped_products, -1 * index_vector)
+        grouped_products = permute_rows_by_shifts(grouped_products, -1 * index_vector)
         
         return grouped_products, batch_index
     
