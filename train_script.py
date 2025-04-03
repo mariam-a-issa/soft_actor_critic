@@ -7,7 +7,7 @@ from utils import Config
 from training_pipeline import train
 
 
-MAIN_EXPERIMENT_NAME = 'nasimemu-medium-autotune-bind-all-devices-and-permute-then-normalize-with-root-then-bind-specific-device-h-param-sweep-critic-lr-correct-way'
+MAIN_EXPERIMENT_NAME = 'nasimemu-medium-autotune-bundle-all-devices-and-permute-then-normalize-with-root-then-bundle-specific-device-h-param-sweep-critic-lr-correct-way'
 NUM_RUNS = 1
 OTHER_HPARAMS = { #Just the default params that may be different than the ones in the training file
     'environment_info' : {'id' : 'NASimEmu-v0', 'emulate' : False, 'scenario_name' : '/home/ian/projects/hd_sac/NetworkAttackSimulator/nasim/scenarios/benchmark/medium.yaml', 'step_limit' : 100, 'augment_with_action' : True},
@@ -16,7 +16,7 @@ OTHER_HPARAMS = { #Just the default params that may be different than the ones i
     'graph' : False,
     'wandb' : True,
     'sample_size' : 64,
-    'gpu_device' : 0,
+    'gpu_device' : 1,
     'policy_lr' : 3e-4,
     'critic_lr' : 3e-4
 }

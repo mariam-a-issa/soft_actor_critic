@@ -61,20 +61,21 @@ class Encoder:
         pos_enc = positional_encoding(index_vector, self._pos_enc_dim)
         nodes = torch.cat((nodes, pos_enc), dim = 1)
         encoded_nodes = nodes @ self._s_hdvec + self._bias
-        
-        #Put in exponential form
-        encoded_nodes = torch.exp(1j * encoded_nodes)
+        encoded_nodes = permute_rows_by_shifts(encoded_nodes, index_vector)
         
         #Bundle them total state nodes together
         grouped_products : Tensor = torch.zeros((batch_index.max() + 1, encoded_nodes.shape[1]), dtype=encoded_nodes.dtype)
         grouped_products.index_add_(0, batch_index, encoded_nodes)
         grouped_products = grouped_products[batch_index]
         
+        #Put in exponential form
+        encoded_nodes = torch.exp(1j * encoded_nodes)
+        
         #Permute total state by one
         grouped_products = permute_rows_by_shifts(grouped_products, torch.ones(grouped_products.shape[0], dtype=torch.int64))
         
         #Bind total state and each node and normalize
-        final_encode = encoded_nodes * grouped_products / number_nodes
+        final_encode = encoded_nodes + grouped_products / number_nodes
         
         return final_encode, batch_index
     
