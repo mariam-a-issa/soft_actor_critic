@@ -17,8 +17,9 @@ OTHER_HPARAMS = { #Just the default params that may be different than the ones i
     'wandb' : True,
     'sample_size' : 64,
     'gpu_device' : 1,
-    'policy_lr' : 3e-4,
-    'critic_lr' : 3e-4
+    'policy_lr' : .01,
+    'critic_lr' : 3e-4,
+    'alpha_lr' : .01
 }
 
 def train_hyper_param(name : str, values : list[float], seeds : list[int]):
@@ -45,4 +46,4 @@ def train_hyper_param(name : str, values : list[float], seeds : list[int]):
 
 if __name__ == '__main__':
     os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8' #Needed since training will have to be deterministic. More info at https://docs.nvidia.com/cuda/cublas/index.html#cublasApi_reproducibility
-    train_hyper_param('critic_lr', [3e-4], [0, 1, 2])
+    train_hyper_param('critic_lr', [.1], [0, 1, 2])

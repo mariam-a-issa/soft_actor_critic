@@ -130,7 +130,8 @@ class MILHDCAgent(Agent):
             'Policy Loss' : policy_loss.item(),
             'Alpha Loss' : alpha_loss.item(),
             'Entropy' : ent.item(),
-            'Alpha Value' : self._alpha().item()
+            'Alpha Value' : self._alpha().item(),
+            'Policy Gradient' : self.calc_grad_norm(self._policy.parameters())
         }
     
     def target_param_update(self):
