@@ -25,8 +25,10 @@ class Encoder:
             distribution (str): The distribution used to build the RHFF basis vectors
         """
         
-        self._s_hdvec = torch.randn(3 * node_dim + pos_enc_dim, dim, dtype=torch.float32) 
-        self._bias = 2 * math.pi * torch.rand(dim, dtype=torch.float32)
+        self._feat_s_hdvec = torch.randn(2, node_dim, dim, dtype=torch.float32) 
+        #self._feat_bias = 2 * math.pi * torch.rand(dim, dtype=torch.float32)
+        self._pos_s_hdvcec = torch.randn(pos_enc_dim, dim, dtype=torch.float32)
+        self._pos_bias = 2 * math.pi * torch.rand(dim, dtype=torch.float32)
         self._dim = dim
         self._pos_enc_dim = pos_enc_dim
         
@@ -59,34 +61,29 @@ class Encoder:
         
         #Encode the nodes
         pos_enc = positional_encoding(index_vector, self._pos_enc_dim)
-        states_agg = torch.cat([segment_coo(nodes, batch_index, reduce='mean'), segment_coo(nodes, batch_index, reduce='max')], dim=1)[batch_index]
-        nodes = torch.cat((nodes, pos_enc, states_agg), dim = 1)
-        encoded_nodes = nodes @ self._s_hdvec + self._bias
-        #perm_nodes = permute_rows_by_shifts(encoded_nodes, index_vector)
+        #First get correct matrix for each node based on binary value, then pick the right vector for each node, then exponent, then bundle, then normalize
+        hd_feats = torch.exp(1j * self._feat_s_hdvec[nodes.to(torch.int64).clamp(max=1), torch.arange(nodes.shape[1])]).sum(dim=1) / nodes.shape[1]
+        hd_pos = torch.exp(1j * (pos_enc @ self._pos_s_hdvcec + self._pos_bias))
+        encoded_nodes = hd_feats * hd_pos
         
-        # #Normalize
-        # perm_nodes /= number_nodes
+        # #Bundle them total state nodes together and normalize
+        grouped_products : Tensor = torch.zeros((batch_index.max() + 1, encoded_nodes.shape[1]), dtype=encoded_nodes.dtype)
+        grouped_products.index_add_(0, batch_index, encoded_nodes)
+        grouped_products = grouped_products[batch_index]
+        grouped_products /= number_nodes
         
-        # #Bundle them total state nodes together
-        # grouped_products : Tensor = torch.zeros((batch_index.max() + 1, perm_nodes.shape[1]), dtype=perm_nodes.dtype)
-        # grouped_products.index_add_(0, batch_index, perm_nodes)
-        # grouped_products = grouped_products[batch_index]
+        #Permute total state by one
+        grouped_products = permute_rows_by_shifts(grouped_products, torch.ones(grouped_products.shape[0], dtype=torch.int64))
         
-        # #Put in exponential form
-        encoded_nodes = torch.exp(1j * encoded_nodes)
-        # grouped_products = torch.exp(1j * grouped_products)
-        
-        # #Permute total state by one
-        # grouped_products = permute_rows_by_shifts(grouped_products, torch.ones(grouped_products.shape[0], dtype=torch.int64))
-        
-        # #Bind total state and each node and normalize
-        # final_encode = encoded_nodes * grouped_products
+        #Bind total state and each node and normalize
+        encoded_nodes = encoded_nodes * grouped_products
         
         return encoded_nodes, batch_index
     
     def to(self, device : torch.device) -> None:
-        self._s_hdvec.to(device)
-        self._bias.to(device)
+        self._feat_s_hdvec.to(device)
+        self._pos_s_hdvcec.to(device)
+        self._pos_bias.to(device)
     
     
 class Actor(nn.Module):

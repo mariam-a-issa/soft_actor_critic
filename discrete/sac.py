@@ -32,7 +32,7 @@ class Alpha:
         self._end = end
         self._midpoint = midpoint
         self._slope = slope
-        self._log_alpha = torch.zeros(1, requires_grad=True)
+        self._log_alpha = torch.nn.Parameter(torch.zeros(1, requires_grad=True))
         self._max_steps = max_steps
         self._autotune = autotune
         self._alpha_value = alpha_value
