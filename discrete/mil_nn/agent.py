@@ -2,6 +2,7 @@ from pathlib import Path
 from copy import deepcopy
 
 from torch import Tensor
+from torch.nn import utils
 import torch
 from torch_geometric.data import Data, Batch
 
@@ -150,7 +151,8 @@ class MILNNAgent(Agent):
         self._optim_alpha.zero_grad()
         alpha_loss.backward()
         
-        #utils.clip_grad_norm_([*q_embedding.parameters(), *q_func.parameters()], clip_norm_value)
+        if self._config.grad_clip:
+            utils.clip_grad_norm_([*self._q_embedding.parameters(), *self._q_func.parameters()], self._config.grad_clip)
         
         self._optim_policy.step()
         self._optim_critic.step()

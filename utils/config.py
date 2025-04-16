@@ -2,11 +2,6 @@ from dataclasses import dataclass, field, replace, asdict
 from typing import Optional, Dict, Literal
 import json
 
-@dataclass
-class Config:
-    """
-    Configuration class for RL training, model, learning, environment, logging, and architecture parameters.
-    """
 
 
 @dataclass
@@ -35,10 +30,10 @@ class Config:
     target_entropy_end: float = 0.2
     """Final target entropy value (after annealing)"""
     
-    target_entropy_midpoint: float = 0.45
+    target_entropy_midpoint: float = 0.4
     """Midpoint of the sigmoid function controlling entropy decay"""
     
-    target_entropy_slope: float = 6
+    target_entropy_slope: float = 7
     """Slope of the entropy decay sigmoid function"""
     
     target_entropy_start: float = 0.8
@@ -51,7 +46,7 @@ class Config:
     critic_lr: float = 3e-4
     """Learning rate for the critic network"""
     
-    hidden_dim: int = 128
+    hidden_dim: int = 64
     """Number of units in hidden layers of neural networks"""
     
     hypervec_dim: int = 4096
@@ -63,7 +58,7 @@ class Config:
     pos_enc_dim: int = 8
     """Size of positional encoding (if used)"""
     
-    type_agent: Literal['hdc_agent', 'nn_agent', 'nn_mil_agent', 'hdc_mil_agent'] = 'hdc_agent'
+    type_agent: Literal['hdc', 'nn', 'nn_mil', 'hdc_mil'] = 'hdc_agent'
     """Type of agent to use: 
     - 'hdc' (Hyperdimensional Computing-based with padding)
     - 'nn' (Standard neural network with padding)
@@ -78,13 +73,13 @@ class Config:
     explore_steps: int = 0
     """Number of initial random exploration steps before learning begins"""
     
-    grad_clip: Optional[int] = None
+    grad_clip: Optional[int] = 5
     """Maximum gradient norm for clipping critic network"""
     
     learning_steps: int = 1
     """Number of gradient updates per training step"""
     
-    max_steps: int = 250000
+    max_steps: int = 200000
     """Total number of environment steps during training"""
     
     sample_size: int = 64
