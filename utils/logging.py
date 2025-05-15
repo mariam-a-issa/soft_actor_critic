@@ -45,7 +45,8 @@ class LearningLogger:
                              group=f'{formatted}_{sha[:config.num_sha_char]}_{experiment_name}_{hp_info}',
                              job_type = f'seed-{config.seed}',
                              config=self._hparams,
-                             name = f'{formatted}_{sha[:config.num_sha_char]}_{experiment_name}_{hp_info}_seed-{config.seed}'
+                             name = f'{formatted}_{sha[:config.num_sha_char]}_{experiment_name}_{hp_info}_seed-{config.seed}',
+                             notes = config.notes
                              )
             self._loggers['wandb'] = writer
             writer.define_metric('Episode')

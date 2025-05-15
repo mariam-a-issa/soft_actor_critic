@@ -1,7 +1,8 @@
 from copy import copy
 import os
+from pathlib import Path
 
-import torch
+from git import Repo
 
 from utils import Config
 from training_pipeline import train
@@ -17,8 +18,14 @@ OTHER_HPARAMS = { #Just the default params that may be different than the ones i
 }
 
 def train_hyper_param(name : str, values : list[float], seeds : list[int]):
-
+    
+    if not _check_git_clean():
+        raise RuntimeError("Commit latest changes before running an experiment")
+    
+    note = _get_note()
+    
     h_params = copy(OTHER_HPARAMS)
+    h_params['notes'] = note
     for value in values:
 
         h_params[name] = value
@@ -37,6 +44,25 @@ def train_hyper_param(name : str, values : list[float], seeds : list[int]):
                 f.close()
                 raise e
 
+def _check_git_clean(repo_path='.'):
+    """
+    Checks if the Git repository at repo_path is clean (no unstaged or uncommitted changes).
+    Returns True if clean, False otherwise.
+    """
+    repo = Repo(repo_path)
+    return not repo.is_dirty(untracked_files=True)
+
+def _get_note() -> str:
+    try:
+        file_path = Path('./note.txt')
+        with open(file_path, 'r') as file:
+            content = file.read()
+            print('Note:\n')
+            print(content)
+            os.remove(file_path)
+            return content 
+    except FileNotFoundError:
+        raise RuntimeError(f"No note file was created. Make sure to have notes in the note.txt file before running an experiment")
 
 if __name__ == '__main__':
     os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8' #Needed since training will have to be deterministic. More info at https://docs.nvidia.com/cuda/cublas/index.html#cublasApi_reproducibility

@@ -122,6 +122,9 @@ class Config:
     
     num_sha_char : int = 7
     """The number of characters from the sha to show on the name of a wandb experiment"""
+    
+    notes : str = None
+    """Notes about the setup of the current experiment"""
 
     ### Architecture Parameters ###
     attention: bool = False
