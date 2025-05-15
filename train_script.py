@@ -1,29 +1,38 @@
 from copy import copy
 import os
 from pathlib import Path
+import argparse
 
 from git import Repo
 
 from utils import Config
 from training_pipeline import train
 
-
+PROJECT_NAME = 'New Encoder'
 MAIN_EXPERIMENT_NAME = 'test'
 NUM_RUNS = 1
 OTHER_HPARAMS = { #Just the default params that may be different than the ones in the training file
+    'wandb_project_name' : PROJECT_NAME,
     'environment_info' : {'id' : 'NASimEmu-v0', 'emulate' : False, 'scenario_name' : '/home/ian/projects/hd_sac/NetworkAttackSimulator/nasim/scenarios/benchmark/medium.yaml', 'step_limit' : 100, 'augment_with_action' : True},
     'type_agent' : 'nn_mil',
     'wandb' : True,
-    'tensorboard' : False,
+    'tensorboard' : False
 }
 
 def train_hyper_param(name : str, values : list[float], seeds : list[int]):
     
-    if not _check_git_clean():
-        raise RuntimeError("Commit latest changes before running an experiment")
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-d', '--debug', action='store_true', help='Enable debug mode')
+    args = parser.parse_args()
     
-    note = _get_note()
-    
+    if not args.debug:
+        if not _check_git_clean():
+            raise RuntimeError("Commit latest changes before running an experiment")
+        
+        note = _get_note()
+    else:
+        note = None
+        
     h_params = copy(OTHER_HPARAMS)
     h_params['notes'] = note
     for value in values:
@@ -57,7 +66,7 @@ def _get_note() -> str:
         file_path = Path('./note.txt')
         with open(file_path, 'r') as file:
             content = file.read()
-            print('Note:\n')
+            print('Notes:\n')
             print(content)
             os.remove(file_path)
             return content 
