@@ -1,43 +1,59 @@
 import csv
 from pathlib import Path
+from datetime import datetime
 
 from torch.utils.tensorboard import SummaryWriter
+import git
 import wandb as wb
 
-WANDB_PROJECT_NAME = 'SAC in NASIM MIL New'
+from .config import Config
+
 
 class LearningLogger:
     """Creates a logging class to handle specific types of logging for data about the perforamnce of the model"""
     _instance = None
     
-    def __new__(cls, base_dir : str = None, group_name : str = None, job_name : str = None, run_name : str = None, hparams_config : dict = None, tensorboard : bool = True, wandb : bool = True, save_csv : bool = False):
+    def __new__(cls, base_dir : str = None, 
+                experiment_name : str = None, 
+                hp_info : str = None, 
+                config : Config = None):
         """Allows logger to follow singleton design"""
-        if cls._instance is None or base_dir is not None or group_name is not None or job_name is not None or run_name is not None: #Build new instance when no new one exists or when the logging data is being changed
+        if cls._instance is None or base_dir is not None or experiment_name is not None or hp_info is not None: #Build new instance when no new one exists or when the logging data is being changed
             cls._instance = super(LearningLogger, cls).__new__(cls)
-            cls._instance._initialize(base_dir, group_name, job_name, run_name, hparams_config, tensorboard, wandb, save_csv)
+            cls._instance._initialize(base_dir, experiment_name, hp_info, config)
         return cls._instance
     
-    def _initialize(self, base_dir : str, group_name : str, job_name : str, run_name : str, hparams_config : dict, tensorboard : bool = True, wand : bool = True, save_csv : bool = False):
+    def _initialize(self, base_dir : str, experiment_name : str, hp_info : str, config : Config):
         """Will create tools used for logging. Done in _initialize instead of __init__ for the singleton to only do this when we are actually resetting in __new__"""
         self._loggers = dict()
-        self._hparams = hparams_config #Can be used at the end of a run alongside metrics to log hparams
-        save_path = Path(base_dir) / group_name / job_name / run_name
+        self._hparams = config.to_flat_dict() #Can be used at the end of a run alongside metrics to log hparams
+        save_path = Path(base_dir) / experiment_name / hp_info / f'({config.seed})'
+        repo = git.Repo(search_parent_directories=True)
+        sha = repo.head.object.hexsha
+        
+        now = datetime.now()
+        formatted = now.strftime("%m_%d_%H_%M")
 
-        if tensorboard:
+        if config.tensorboard:
             tense_writer = SummaryWriter(save_path)
             self._loggers['tensorboard'] = tense_writer
         else:
             self._loggers['tensorboard'] = None
                 
-        if wand:
-            writer = wb.init(project=WANDB_PROJECT_NAME, name=group_name + '/' + job_name + '/' + run_name, config=hparams_config)
+        if config.wandb:
+            writer = wb.init(project=config.wandb_project_name, 
+                             group=f'{formatted}_{sha[:config.num_sha_char]}_{experiment_name}_{hp_info}',
+                             job_type = f'seed-{config.seed}',
+                             config=self._hparams,
+                             name = f'{formatted}_{sha[:config.num_sha_char]}_{experiment_name}_{hp_info}_seed-{config.seed}'
+                             )
             self._loggers['wandb'] = writer
             writer.define_metric('Episode')
             writer.define_metric('Episodic Reward', step_metric='Episode')
         else:
             self._loggers['wandb'] = None
 
-        if save_csv:
+        if config.save_csv:
             _csv_of_hparams(save_path, self._hparams)
             
         self._cur_step = 0

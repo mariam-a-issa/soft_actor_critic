@@ -13,17 +13,13 @@ from .helpers import clean_state, get_action, get_train_env_info, setup_env
 LOG_DIR = 'runs'
 MAGIC_CORP_NUM = 20 #Magic number involved with indexing in the corp scenario
 
-def train(
-        run_name : str = '',  #Multiple runs inside of a job (Usually for different seeds)
-        base_dir : str = LOG_DIR, #Root of all experiments
-        group_name : str = '', #Groups of various experiments
-        job_name : str = '',   #Individual jobs in the experiment
-        config : Config = None) -> None:
+def train(base_dir : str = LOG_DIR, #Root of all experiments
+          experiment_name : str = '', #Groups of various experiments
+          hp_info : str = '',   #Individual jobs in the experiment
+          config : Config = None) -> None:
     """Will be the main training loop"""
-    
-    h_params_dict = config.to_flat_dict()
 
-    logger = LearningLogger(base_dir, group_name, job_name, run_name, h_params_dict, tensorboard=config.tensorboard, wandb=config.wandb, save_csv=config.save_csv)
+    logger = LearningLogger(base_dir, experiment_name, hp_info, config)
     
     env : gym.Env
     env = gym.make(**config.environment_info)

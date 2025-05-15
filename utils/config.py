@@ -116,6 +116,12 @@ class Config:
     
     wandb: bool = False
     """Whether to use Weights & Biases for logging"""
+    
+    wandb_project_name : str = "SAC in MIL"
+    """The name of the current project"""
+    
+    num_sha_char : int = 7
+    """The number of characters from the sha to show on the name of a wandb experiment"""
 
     ### Architecture Parameters ###
     attention: bool = False

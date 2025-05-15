@@ -13,13 +13,12 @@ OTHER_HPARAMS = { #Just the default params that may be different than the ones i
     'environment_info' : {'id' : 'NASimEmu-v0', 'emulate' : False, 'scenario_name' : '/home/ian/projects/hd_sac/NetworkAttackSimulator/nasim/scenarios/benchmark/medium.yaml', 'step_limit' : 100, 'augment_with_action' : True},
     'type_agent' : 'nn_mil',
     'wandb' : True,
-    'tensorboard' : False
+    'tensorboard' : False,
 }
 
 def train_hyper_param(name : str, values : list[float], seeds : list[int]):
 
     h_params = copy(OTHER_HPARAMS)
-
     for value in values:
 
         h_params[name] = value
@@ -29,7 +28,7 @@ def train_hyper_param(name : str, values : list[float], seeds : list[int]):
             h_params['seed'] = seed
 
             try:
-                train(run_name = f'{name}({value})_seed({seed})', base_dir='runs', group_name = MAIN_EXPERIMENT_NAME, job_name = f'{name}_experiment', config=Config().with_updates(**h_params))
+                train(base_dir='runs', experiment_name = MAIN_EXPERIMENT_NAME, hp_info = f'{name}_{value}', config=Config().with_updates(**h_params))
             except ValueError as e: 
                 directory_path = f'runs/{MAIN_EXPERIMENT_NAME}/{name}_experiment/{name}({value})_seed({seed})/'
                 os.makedirs(directory_path, exist_ok=True)
