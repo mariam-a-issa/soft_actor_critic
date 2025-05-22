@@ -95,6 +95,8 @@ class MILNNAgent(Agent):
         q_cur_state_embed, q_cur_batch_index = self._q_embedding(trans.state, trans.state_index)
         policy_cur_state_embed, policy_cur_batch_index = self._policy_embedding(trans.state, trans.state_index)
         
+        cur_q1 : Tensor
+        cur_q2 : Tensor
         cur_q1, cur_q2 = self._q_func(q_cur_state_embed, q_cur_batch_index, trans.state_index)
         _, cur_prob, cur_log_prob = self._policy.sample_action(policy_cur_state_embed, policy_cur_batch_index)
         
@@ -102,13 +104,10 @@ class MILNNAgent(Agent):
         cur_log_prob = cur_log_prob / torch.log(number_devices * self._action_dim).view(-1, 1) #Normilize by the maximum possible entropy
         
         with torch.no_grad():
-            tar_q_cur_state_embed, tar_q_cur_batch_index = self._q_embedding(trans.state, trans.state_index)
-            cur_q_target = self._q_func_target(tar_q_cur_state_embed, tar_q_cur_batch_index, trans.state_index)
-            
-            q_next_state_embed, q_next_batch_index = self._q_embedding(trans.next_state, trans.next_state_index)
+            tar_q_next_state_embed, q_next_batch_index = self._target_q_embedding(trans.next_state, trans.next_state_index)
             policy_next_state_embed, policy_next_batch_index = self._policy_embedding(trans.next_state, trans.next_state_index)
             
-            next_q_target = self._q_func_target(q_next_state_embed, q_next_batch_index, trans.next_state_index)
+            next_q_target = self._q_func_target(tar_q_next_state_embed, q_next_batch_index, trans.next_state_index)
             _, next_prob, next_log_prob = self._policy.sample_action(policy_next_state_embed, policy_next_batch_index)
             
             next_log_prob = next_log_prob / torch.log(number_devices * self._action_dim).view(-1, 1) #Normilize by the maximum possible entropy
@@ -118,7 +117,7 @@ class MILNNAgent(Agent):
                             cur_log_prob.view(batch_size, cur_action_size, 1)).mean()
         
         
-        policy_loss = sac.policy_loss(cur_q_target, cur_prob, cur_log_prob, self._alpha()).mean().squeeze()
+        policy_loss = sac.policy_loss(torch.min(cur_q1, cur_q2).detach(), cur_prob, cur_log_prob, self._alpha()).mean().squeeze()
         q1_dif, q2_dif = sac.q_func_loss(cur_q1, 
                                          cur_q2,
                                          next_q_target,
