@@ -5,7 +5,7 @@ import torch
 import gym
 import numpy as np
 
-from discrete import create_agent
+from implementation import create_agent
 from utils import Transition, LearningLogger, Config
 from .evaluate import evaluate
 from .helpers import clean_state, get_action, get_train_env_info, setup_env

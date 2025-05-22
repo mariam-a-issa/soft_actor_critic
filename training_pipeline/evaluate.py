@@ -1,6 +1,6 @@
 import gymnasium as gym
 
-from discrete import Agent
+from implementation import Agent
 from utils import LearningLogger
 from .helpers import convert_int_action, clean_state
 

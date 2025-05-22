@@ -9,7 +9,7 @@ from numpy.typing import NDArray
 from nasimemu.nasim.envs.host_vector import HostVector
 import gym
 
-from discrete import Agent
+from implementation import Agent
 from utils import Config
 
 def clean_state(s : NDArray | tuple, graph : bool) -> Tensor | Data:
