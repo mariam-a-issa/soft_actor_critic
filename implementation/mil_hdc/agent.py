@@ -3,9 +3,11 @@ from pathlib import Path
 from torch import Tensor
 import torch
 from torch import optim
+from torch_geometric.data import Batch
 
-from utils import DynamicMemoryBuffer, Transition, Config
-from .implementation import Encoder, Actor, QFunction, QFunctionTarget
+from utils import DynamicMemoryBuffer, Transition, Config, group_to_boundaries_torch
+from .implementation import Actor, QFunction, QFunctionTarget
+from .encoders import OldEncoder, RelEncoder
 from ..agents import Agent
 from .. import sac
 
@@ -16,9 +18,13 @@ class MILHDCAgent(Agent):
         self._memory = DynamicMemoryBuffer(buffer_size=config.buffer_size, 
                                            sample_size=config.sample_size)
         
-        self._embed = Encoder(dim=config.hypervec_dim, 
-                              node_dim=node_dim,
-                              pos_enc_dim=config.pos_enc_dim)
+        if config.graph:
+            self._embed = RelEncoder(dim=config.hypervec_dim,
+                                     node_dim=node_dim)
+        else:
+            self._embed = OldEncoder(dim=config.hypervec_dim, 
+                                     node_dim=node_dim,
+                                     pos_enc_dim=config.pos_enc_dim)
         
         self._q_func = QFunction(embed_dim=config.hypervec_dim, 
                                  action_dim=action_dim)
@@ -139,14 +145,24 @@ class MILHDCAgent(Agent):
 
     def sample(self, state : Tensor) -> Tensor:
         with torch.no_grad():
-            state_index = torch.tensor([0,state.shape[0]])
+            if self._config.graph:
+                state = Batch.from_data_list([state])
+                state_index = group_to_boundaries_torch(state.batch)
+            else:
+                state_index = torch.tensor([0,state.shape[0]])
+            
             embed_state, batch_index = self._embed(state, state_index)
             action, _, _ = self._policy.sample_action(embed_state, batch_index, state_index)
             return action
         
     def evaluate(self, state : Tensor) -> Tensor:
         with torch.no_grad():
-            state_index = torch.tensor([0,state.shape[0]])
+            if self._config.graph:
+                state = Batch.from_data_list([state])
+                state_index = group_to_boundaries_torch(state.batch)
+            else:
+                state_index = torch.tensor([0,state.shape[0]])
+                
             embed_state, batch_index = self._embed(state, state_index)
             action = self._policy.evaluate_action(embed_state, batch_index, state_index)
             return action

@@ -3,6 +3,8 @@ from torch import Tensor
 from torch_geometric.data import Batch
 from torch_sparse import SparseTensor
 
+from ...model_utils import generate_batch_index
+
 
 class RelHD(object):
     def __init__(self, dim : int,
@@ -24,7 +26,7 @@ class RelHD(object):
         
 
     #encodes the feature nodes into hypervectors
-    def __call__(self, nodes : Batch):
+    def __call__(self, nodes : Batch, state_index : Tensor): 
         is_subnet = nodes.x[:, 0] == 1
         node_features = nodes.x[~is_subnet] # n x f. Number of nodes x number of features
         
@@ -47,13 +49,13 @@ class RelHD(object):
         A_2 = A @ A
 
         #Remove self loops and normalize 
-        A_2_M = A_2.remove_diag().set_value_(lambda v: v>0, layout='coo')
+        A_2_M = A_2.remove_diag()
 
         #Find the 4 hop
         A_4 = A_2_M @ A_2_M
 
         #Remove self loops. Normalze
-        A_4_M = A_4.remove_diag().set_value_(lambda v: v>0, layout='coo')
+        A_4_M = A_4.remove_diag()
 
         #Make dense
         A_2_M = A_2_M.to_dense()
@@ -71,4 +73,11 @@ class RelHD(object):
         hop_2 = A_2_M @ encoded_nodes
         hop_4 = A_4_M @ encoded_nodes
         
-        return encoded_nodes * self._phi0 + hop_2 * self._phi1 + hop_4 * self._phi2
+        return encoded_nodes * self._phi0 + hop_2 * self._phi1 + hop_4 * self._phi2, generate_batch_index(state_index)
+    
+    def to(self, device : torch.device):
+        self._base_hvecs.to(device)
+        self._base_bipolar.to(device)
+        self._phi0.to(device)
+        self._phi1.to(device)
+        self._phi2.to(device)
