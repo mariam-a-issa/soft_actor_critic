@@ -1,9 +1,11 @@
 from collections import deque
 from typing import NamedTuple
 import random
+
 import torch
 from torch_geometric.data import Batch
 from torch import tensor, Tensor
+
 from .tensor_organization import group_to_boundaries_torch
 
 class Transition(NamedTuple):
@@ -108,9 +110,10 @@ class DynamicMemoryBuffer():
 class GraphMemoryBuffer():
     """A type of memory buffer that will retain graph represententatoins"""
     
-    def __init__(self, buffer_length : int, sample_size : int) -> None:
+    def __init__(self, buffer_length : int, sample_size : int, mask_subnet_state_index : bool = False) -> None:
         self._memory = deque(maxlen=buffer_length)
         self._sample_size = sample_size
+        self._mask_subnet_state_index = mask_subnet_state_index
         
     def sample(self) -> Transition:
         if len(self._memory) <= self._sample_size:
@@ -122,8 +125,18 @@ class GraphMemoryBuffer():
         cur_batch = Batch.from_data_list(state)
         next_batch = Batch.from_data_list(next_state)
         
-        state_index = group_to_boundaries_torch(cur_batch.batch)
-        next_state_index = group_to_boundaries_torch(next_batch.batch)
+        if self._mask_subnet_state_index:
+            cur_is_not_subnet = cur_batch.x[:, 0] != 1
+            next_is_not_subnet = next_batch.x[:, 0] != 1
+            
+            cur_batch_batch = cur_batch.batch[cur_is_not_subnet]
+            next_batch_batch = next_batch.batch[next_is_not_subnet]
+        else:
+            cur_batch_batch = cur_batch.batch
+            next_batch_batch = next_batch.batch
+        
+        state_index = group_to_boundaries_torch(cur_batch_batch)
+        next_state_index = group_to_boundaries_torch(next_batch_batch)
         
         action = torch.stack(action, dim = 0)
         reward = torch.stack(reward, dim =0)

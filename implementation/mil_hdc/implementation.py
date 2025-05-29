@@ -26,8 +26,8 @@ class Actor(nn.Module):
         self._action = nn.Linear(dim, action_dim, dtype=torch.cfloat, bias=False)
         self._device = nn.Linear(dim, 1, dtype = torch.cfloat, bias=False)
 
-        self._action.weight = nn.Parameter(torch.zeros(action_dim, dim, dtype=torch.cfloat))
-        self._device.weight = nn.Parameter(torch.zeros(1, dim, dtype=torch.cfloat))
+        self._action.weight = nn.Parameter(torch.zeros(action_dim, dim, dtype=torch.float))
+        self._device.weight = nn.Parameter(torch.zeros(1, dim, dtype=torch.float))
         
         self._dim = dim
         
@@ -53,8 +53,8 @@ class Actor(nn.Module):
         # device_select = torch.real((permuted_d_model @ embedded_state[batch_index].unsqueeze(-1)).view(BM, 1)) / self._dim
         # action_select = torch.real((permuted_a_model @ embedded_state[batch_index].unsqueeze(-1)).view(BM, self._action_dim)) / self._dim
         #TODO may need to not normalize
-        action_select = torch.real(self._action(torch.conj(embedded_state))) / self._dim
-        device_select = torch.real(self._device(torch.conj(embedded_state))) / self._dim
+        action_select = self._action(embedded_state) / self._dim
+        device_select = self._device(embedded_state) / self._dim
         
         b = batch_index.unique().numel()
         if b == 1:
@@ -116,9 +116,9 @@ class QModel():
         #Using the same initilzation as the torch.nn.Linear 
         #https://github.com/pytorch/pytorch/blob/main/torch/nn/modules/linear.py#L106-L108
 
-        self._action = (upper_bound - lower_bound) * torch.rand(dim, action_dim, dtype=torch.cfloat) + lower_bound
+        self._action = torch.zeros(dim, action_dim, dtype=torch.float)#(upper_bound - lower_bound) * torch.rand(dim, action_dim, dtype=torch.float) + lower_bound
         self._action.requires_grad_(False)
-        self._device = torch.zeros(dim, 2, dtype=torch.cfloat, requires_grad=False)
+        self._device = torch.zeros(dim, 2, dtype=torch.float, requires_grad=False)
         
         self._dim = dim
         
@@ -142,8 +142,8 @@ class QModel():
         #                                                          counting)
         
 
-        action_q = torch.real(torch.conj(embedded_state) @ self._action) / self._dim
-        device_q = torch.real(torch.conj(embedded_state) @ self._device) /self._dim
+        action_q = embedded_state @ self._action / self._dim
+        device_q = embedded_state @ self._device /self._dim
 
         #num_devices = torch.diff(state_index)
         #action_q /= num_devices.unsqueeze(dim=-1)[batch_index] #Need to normalize q value as we are using bundeling for the encoding

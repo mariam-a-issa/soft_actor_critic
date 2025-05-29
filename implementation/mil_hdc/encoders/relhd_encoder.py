@@ -51,27 +51,27 @@ class RelHD(object):
         #Remove self loops and normalize 
         A_2_M = A_2.remove_diag()
 
-        #Find the 4 hop
-        A_4 = A_2_M @ A_2_M
+        #Find the 3 hop
+        A_3 = A_2_M @ A
 
-        #Remove self loops. Normalze
-        A_4_M = A_4.remove_diag()
+        #Remove self loops
+        A_3_M = A_3.remove_diag()
 
         #Make dense
         A_2_M = A_2_M.to_dense()
-        A_4_M = A_4_M.to_dense()
+        A_3_M = A_3_M.to_dense()
 
         #Remove A_2 repeats (nodes in same subnet not other subnet)
-        A_4_M[A_2_M > 0] = 0
+        A_3_M[A_2_M > 0] = 0
 
         #Remove subnet nodes
         keep = torch.ones(N_tot, dtype=torch.bool)
         keep[is_subnet] = False
         A_2_M = A_2_M[keep][:,keep]
-        A_4_M = A_4_M[keep][:,keep]
+        A_3_M = A_3_M[keep][:,keep]
         
         hop_2 = A_2_M @ encoded_nodes
-        hop_4 = A_4_M @ encoded_nodes
+        hop_4 = A_3_M @ encoded_nodes
         
         return encoded_nodes * self._phi0 + hop_2 * self._phi1 + hop_4 * self._phi2, generate_batch_index(state_index)
     

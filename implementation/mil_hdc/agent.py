@@ -5,7 +5,7 @@ import torch
 from torch import optim
 from torch_geometric.data import Batch
 
-from utils import DynamicMemoryBuffer, Transition, Config, group_to_boundaries_torch
+from utils import DynamicMemoryBuffer, GraphMemoryBuffer, Transition, Config, group_to_boundaries_torch
 from .implementation import Actor, QFunction, QFunctionTarget
 from .encoders import OldEncoder, RelEncoder
 from ..agents import Agent
@@ -15,16 +15,19 @@ from .. import sac
 class MILHDCAgent(Agent):
     def __init__(self, node_dim : int, action_dim : int, config : Config):
         super().__init__(config.target_update, config.update_frequency, config.learning_steps)
-        self._memory = DynamicMemoryBuffer(buffer_size=config.buffer_size, 
-                                           sample_size=config.sample_size)
         
         if config.graph:
             self._embed = RelEncoder(dim=config.hypervec_dim,
                                      node_dim=node_dim)
+            self._memory = GraphMemoryBuffer(buffer_length=config.buffer_size,
+                                             sample_size=config.sample_size,
+                                             mask_subnet_state_index=True)
         else:
             self._embed = OldEncoder(dim=config.hypervec_dim, 
                                      node_dim=node_dim,
                                      pos_enc_dim=config.pos_enc_dim)
+            self._memory = DynamicMemoryBuffer(buffer_size=config.buffer_size, 
+                                           sample_size=config.sample_size)
         
         self._q_func = QFunction(embed_dim=config.hypervec_dim, 
                                  action_dim=action_dim)
@@ -61,13 +64,15 @@ class MILHDCAgent(Agent):
     def param_update(self) -> dict[str : float]:
         trans = self._memory.sample()
         
-        cur_state, cur_batch_index = self._embed(trans.state, trans.state_index)
+        with torch.no_grad():
+            cur_state, cur_batch_index = self._embed(trans.state, trans.state_index)
+            
         _, cur_prob, cur_log_prob = self._policy.sample_action(cur_state, cur_batch_index, trans.state_index)
         
-        number_devices = torch.diff(trans.state_index)
-        cur_log_prob = cur_log_prob / torch.log(number_devices * self._action_dim).view(-1, 1)
-        
         with torch.no_grad():
+            number_devices = torch.diff(trans.state_index)
+            cur_log_prob = cur_log_prob / torch.log(number_devices * self._action_dim).view(-1, 1)
+            
             cur_q1, cur_q2 = self._q_func(cur_state, cur_batch_index, trans.state_index)
             cur_q_target = self._q_target(cur_state, cur_batch_index, trans.state_index)
             
@@ -147,7 +152,7 @@ class MILHDCAgent(Agent):
         with torch.no_grad():
             if self._config.graph:
                 state = Batch.from_data_list([state])
-                state_index = group_to_boundaries_torch(state.batch)
+                state_index = group_to_boundaries_torch(state.batch[state.x[:, 0] != 1])
             else:
                 state_index = torch.tensor([0,state.shape[0]])
             
@@ -159,7 +164,7 @@ class MILHDCAgent(Agent):
         with torch.no_grad():
             if self._config.graph:
                 state = Batch.from_data_list([state])
-                state_index = group_to_boundaries_torch(state.batch)
+                state_index = group_to_boundaries_torch(state.batch[state.x[:, 0] != 1])
             else:
                 state_index = torch.tensor([0,state.shape[0]])
                 
