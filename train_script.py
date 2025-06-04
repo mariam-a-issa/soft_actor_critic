@@ -44,7 +44,7 @@ def train_hyper_param(name : str, values : list[float], seeds : list[int]):
         note = None
         
     h_params = copy(OTHER_HPARAMS)
-    h_params[' '] = note
+    # h_params[' '] = note
     for value in values:
 
         h_params[name] = value
