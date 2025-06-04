@@ -1,2 +1,6 @@
 nasimemu-env/
 NASimEmu/
+implementation/
+training_pipeline/__pycache__/
+utils/__pycache__/
+
