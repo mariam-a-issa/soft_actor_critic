@@ -8,14 +8,22 @@ from git import Repo
 from utils import Config
 from training_pipeline import train
 
-PROJECT_NAME = 'New Encoder'
+PROJECT_NAME = 'RelHD Encoder'
 MAIN_EXPERIMENT_NAME = 'test'
 NUM_RUNS = 1
-OTHER_HPARAMS = { #Just the default params that may be different than the ones in the training file
+# Just the default params that may be different than the ones in the training file
+OTHER_HPARAMS = {
     'wandb_project_name' : PROJECT_NAME,
-    'environment_info' : {'id' : 'NASimEmu-v0', 'emulate' : False, 'scenario_name' : '/home/ian/projects/hd_sac/NetworkAttackSimulator/nasim/scenarios/benchmark/medium.yaml', 'step_limit' : 100, 'augment_with_action' : True},
+    'environment_info' :
+        {
+        'id' : 'NASimEmu-v0',
+        'emulate' : False, # NOTE: for training purposes only. TODO: look into whether this should be set to True when doing inference
+        'scenario_name' : '/Users/mariamissa/PycharmProjects/soft_actor_critic/NetworkAttackSimulator/nasim/scenarios/benchmark/medium.yaml',  # NOTE: changed path to reflect my local env
+        'step_limit' : 100,  # NOTE: might need to change, this could be an active research area
+        'augment_with_action' : True
+        },
     'type_agent' : 'hdc_mil',
-    'wandb' : False,
+    'wandb' : True,
     'tensorboard' : False,
     'graph' : True,
     'gpu' : False
@@ -36,7 +44,7 @@ def train_hyper_param(name : str, values : list[float], seeds : list[int]):
         note = None
         
     h_params = copy(OTHER_HPARAMS)
-    h_params['notes'] = note
+    h_params[' '] = note
     for value in values:
 
         h_params[name] = value

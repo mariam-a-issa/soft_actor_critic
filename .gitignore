@@ -1,5 +1,6 @@
 nasimemu-env/
 NASimEmu/
+NetworkAttackSimulator/
 implementation/
 training_pipeline/__pycache__/
 utils/__pycache__/
