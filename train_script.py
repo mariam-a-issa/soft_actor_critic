@@ -18,7 +18,7 @@ OTHER_HPARAMS = {
         {
         'id' : 'NASimEmu-v0',
         'emulate' : False, # NOTE: for training purposes only. TODO: look into whether this should be set to True when doing inference
-        'scenario_name' : '/Users/mariamissa/PycharmProjects/soft_actor_critic/NetworkAttackSimulator/nasim/scenarios/benchmark/medium.yaml',  # NOTE: changed path to reflect my local env
+        'scenario_name' : '~/NetworkAttackSimulator/nasim/scenarios/benchmark/medium.yaml',  # NOTE: changed path to reflect my local env
         'step_limit' : 100,  # NOTE: might need to change, this could be an active research area
         'augment_with_action' : True
         },
