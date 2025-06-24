@@ -13,9 +13,7 @@ from ..model_utils import reshape
     
 class Actor(nn.Module):
     
-    def __init__(self, 
-                 dim : int,
-                 action_dim : int) -> None:
+    def __init__(self, dim: int, action_dim: int) -> None:
         """Init an HDC based actor
 
         Args:

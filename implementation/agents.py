@@ -552,9 +552,9 @@ from utils import Transition, LearningLogger
 class Agent(ABC):
     
     def __init__(self,
-                 target_update : int,
-                 update_frequency : int,
-                 learning_steps : int):
+                 target_update: int,
+                 update_frequency: int,
+                 learning_steps: int):
         
         self._learning_steps = learning_steps
         self._update_frequency = update_frequency

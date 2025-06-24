@@ -17,13 +17,14 @@ OTHER_HPARAMS = {
     'environment_info' :
         {
         'id' : 'NASimEmu-v0',
-        'emulate' : False, # NOTE: for training purposes only. TODO: look into whether this should be set to True when doing inference
-        'scenario_name' : '~/NetworkAttackSimulator/nasim/scenarios/benchmark/medium.yaml',  # NOTE: changed path to reflect my local env
-        'step_limit' : 100,  # NOTE: might need to change, this could be an active research area
+        'emulate' : False, # NOTE: for training purposes only.
+        # 'scenario_name' : '/home/ian/projects/hd_sac/NetworkAttackSimulator/nasim/scenarios/benchmark/medium.yaml',
+        'scenario_name': '/Users/mariamissa/PycharmProjects/soft_actor_critic/NetworkAttackSimulator/nasim/scenarios/benchmark/medium.yaml',
+        'step_limit' : 100,  # NOTE: might need to change, this is an active research area as mentioned in paper
         'augment_with_action' : True
         },
     'type_agent' : 'hdc_mil',
-    'wandb' : True,
+    'wandb' : False,
     'tensorboard' : False,
     'graph' : True,
     'gpu' : False
@@ -54,6 +55,8 @@ def train_hyper_param(name : str, values : list[float], seeds : list[int]):
             h_params['seed'] = seed
 
             try:
+                print(f"\n\n Config.environment_info: {Config().environment_info} \n\n")
+
                 train(base_dir='runs', experiment_name = MAIN_EXPERIMENT_NAME, hp_info = f'{name}_{value}', config=Config().with_updates(**h_params))
             except ValueError as e: 
                 directory_path = f'runs/{MAIN_EXPERIMENT_NAME}/{name}_experiment/{name}({value})_seed({seed})/'

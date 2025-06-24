@@ -96,7 +96,9 @@ class Config:
         'id': 'NASimEmu-v0',
         'augment_with_action': True,
         'emulate': False,
-        'scenario_name': '/home/ian/projects/hd_sac/NetworkAttackSimulator/nasim/scenarios/benchmark/medium.yaml',
+        # 'scenario_name': '/scenarios/benchmark/medium.yaml',
+        # 'scenario_name': '/home/ian/projects/hd_sac/NetworkAttackSimulator/nasim/scenarios/benchmark/medium.yaml',
+        'scenario_name': '/Users/mariamissa/PycharmProjects/soft_actor_critic/NetworkAttackSimulator/nasim/scenarios/benchmark/medium.yaml',
         'step_limit': 100
     })
     """Dictionary containing environment parameters"""
