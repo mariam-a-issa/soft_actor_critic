@@ -8,8 +8,8 @@ from git import Repo
 from utils import Config
 from training_pipeline import train
 
-PROJECT_NAME = 'New Encoder'
-MAIN_EXPERIMENT_NAME = 'test'
+PROJECT_NAME = 'RelHD Encoder'
+MAIN_EXPERIMENT_NAME = 'non-linear-encoder'
 NUM_RUNS = 1
 OTHER_HPARAMS = { #Just the default params that may be different than the ones in the training file
     'wandb_project_name' : PROJECT_NAME,
