@@ -18,7 +18,8 @@ class MILHDCAgent(Agent):
         
         if config.graph:
             self._embed = RelEncoder(dim=config.hypervec_dim,
-                                     node_dim=node_dim)
+                                     node_dim=node_dim,
+                                     bipolar=config.bipolar)
             self._memory = GraphMemoryBuffer(buffer_length=config.buffer_size,
                                              sample_size=config.sample_size,
                                              mask_subnet_state_index=True)
@@ -68,12 +69,19 @@ class MILHDCAgent(Agent):
             cur_state, cur_batch_index = self._embed(trans.state, trans.state_index)
             
         _, cur_prob, cur_log_prob = self._policy.sample_action(cur_state, cur_batch_index, trans.state_index)
-        
+
         with torch.no_grad():
             number_devices = torch.diff(trans.state_index)
             cur_log_prob = cur_log_prob / torch.log(number_devices * self._action_dim).view(-1, 1)
             
             cur_q1, cur_q2 = self._q_func(cur_state, cur_batch_index, trans.state_index)
+            
+        #   print(f'Cur Q1 mean, min, max: {cur_q1.mean()}, {cur_q1.min()}, {cur_q1.max()}')
+        #    print(f'Cur Q2 mean, min, max: {cur_q2.mean()}, {cur_q2.min()}, {cur_q2.max()}\n')
+            
+        #    print(f'Norm of Q1: {torch.linalg.vector_norm(self._q_func._q1._action)}')
+        #    print(f'Norm of Q2: {torch.linalg.vector_norm(self._q_func._q2._action)}\n')
+            
             cur_q_target = self._q_target(cur_state, cur_batch_index, trans.state_index)
             
             next_state_embed, next_batch_index = self._embed(trans.next_state, trans.next_state_index)
@@ -101,6 +109,9 @@ class MILHDCAgent(Agent):
         
         #Need to get the vector corresponding to the chosen action which would involve doing integer divison between the action index and the total number of devices in a state    
         #Find what devices correspond to the choosen action and then select only the device embedding for that action
+        
+      #  print(f'Q1 Dif mean, min, max: {q1_dif.mean()}, {q1_dif.min()}, {q1_dif.max()}')
+      #  print(f'Q1 Dif mean, min, max: {q2_dif.mean()}, {q2_dif.min()}, {q2_dif.max()}\n')
         
         with torch.no_grad():
             device_choosen = trans.action.squeeze() // self._action_dim

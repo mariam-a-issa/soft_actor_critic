@@ -18,7 +18,9 @@ OTHER_HPARAMS = { #Just the default params that may be different than the ones i
     'wandb' : False,
     'tensorboard' : False,
     'graph' : True,
-    'gpu' : False
+    'gpu' : False,
+    'bipolar': False,
+    'critic_lr': 3e-4
 }
 
 def train_hyper_param(name : str, values : list[float], seeds : list[int]):

@@ -1,3 +1,5 @@
+import math
+
 import torch
 from torch import Tensor
 from torch_geometric.data import Batch
@@ -17,13 +19,13 @@ class RelHD(object):
         self._scale = scale
         
         self._base_hvecs = torch.randn(node_dim, dim) # f x d
+        self._bias_hvec = 2 * math.pi * torch.randn(dim)
         self._base_bipolar = torch.where(self._base_hvecs < 0, torch.tensor(-1.0), torch.tensor(1.0))
         
         #embedding features for node hypervector, 1hop, 2hop
         self._phi0 = torch.where(torch.randn(self._dimension) < 0, torch.tensor(-1.0), torch.tensor(1.0))
         self._phi1 = torch.where(torch.randn(self._dimension) < 0, torch.tensor(-1.0), torch.tensor(1.0))
         self._phi2 = torch.where(torch.randn(self._dimension) < 0, torch.tensor(-1.0), torch.tensor(1.0))
-        
 
     #encodes the feature nodes into hypervectors
     def __call__(self, nodes : Batch, state_index : Tensor): 
@@ -34,12 +36,12 @@ class RelHD(object):
         if self._bipolar:
             encoded_nodes = node_features @ self._base_bipolar
         else:
-            encoded_nodes = node_features @ self._base_hvecs
+            encoded_nodes = torch.cos(node_features @ self._base_hvecs + self._bias_hvec)
         
         row, col = nodes.edge_index
         N_tot = nodes.num_nodes
         
-        #Need to do 2 and 4 hop because there will be subnet(s) between nodes
+        #Need to do 2 and 3 hop because there will be subnet(s) between nodes
         #2 hop represents node in the same subnet. 4 hop represents node in neighboring subnet
         
         #Create Sparse matrix to find the 2/4-hops
@@ -71,9 +73,9 @@ class RelHD(object):
         A_3_M = A_3_M[keep][:,keep]
         
         hop_2 = A_2_M @ encoded_nodes
-        hop_4 = A_3_M @ encoded_nodes
+        hop_3 = A_3_M @ encoded_nodes
         
-        return encoded_nodes * self._phi0 + hop_2 * self._phi1 + hop_4 * self._phi2, generate_batch_index(state_index)
+        return encoded_nodes * self._phi0 + hop_2 * self._phi1 + hop_3 * self._phi2, generate_batch_index(state_index)
     
     def to(self, device : torch.device):
         self._base_hvecs.to(device)

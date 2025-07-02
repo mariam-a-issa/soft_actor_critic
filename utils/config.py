@@ -43,6 +43,9 @@ class Config:
     alpha_lr: float = 3e-4
     """Learning rate for the temperature parameter (alpha)"""
     
+    bipolar: bool = True
+    """Type of HDC model being used"""
+    
     critic_lr: float = 3e-4
     """Learning rate for the critic network"""
     
