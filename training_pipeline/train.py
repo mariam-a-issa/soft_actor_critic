@@ -36,16 +36,15 @@ def train(base_dir : str = LOG_DIR, #Root of all experiments
     num_epi = 0
     epi_reward = 0
     
-    state = clean_state(env.reset(), config.graph)
+    state = env.reset()
     try:
         while config.max_steps > steps:
             action_nas, action = get_action(state=state, env=env, agent=agent, graph=config.graph, explore_steps=config.explore_steps, steps=steps)
             next_state, reward, done, _ = env.step(action_nas)
-            next_state = clean_state(next_state, config.graph)
             trans = Transition( #states will be tensors, actions will be tensor integers, the reward will be a float, and terminated will be a bool
-                state=state,
+                state=clean_state(state, config.graph, env),
                 action=action,
-                next_state=next_state,
+                next_state=clean_state(state, config.graph, env),
                 reward=torch.tensor([reward], device=device, dtype=torch.float32),
                 done=torch.tensor([False], device=device, dtype=torch.float32) #Currently the agent never actually comes to a point where it makes a move that terminates. Therefor done should not be incorporated 
             )
