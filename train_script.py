@@ -18,7 +18,7 @@ OTHER_HPARAMS = { #Just the default params that may be different than the ones i
     'wandb' : True,
     'tensorboard' : False,
     'graph' : True,
-    'gpu' : False,
+    'gpu' : True,
     'bipolar': False,
     'critic_lr': 3e-4
 }
