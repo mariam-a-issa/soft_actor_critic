@@ -73,7 +73,7 @@ class Encoder:
         
         #Bundle specific node with group representation
         #Normalize as number of nodes can vary
-        final_encode = encoded_nodes + group_bundle / number_nodes
+        final_encode = perm_encoded_nodes + group_bundle / number_nodes
 
         return final_encode, batch_index
         
