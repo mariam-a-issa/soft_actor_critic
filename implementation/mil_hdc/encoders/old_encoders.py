@@ -44,25 +44,29 @@ class Encoder:
         #Append positional encoding
         pos_enc = positional_encoding(index_vector, self._pos_enc_dim)
         nodes = torch.cat((nodes, pos_enc), dim=1)
+        encoded_nodes = nodes @ self._s_hdvec + self._bias
         
-        #Non-linear feature bundling
-        nodes_exp = nodes.unsqueeze(2)                 # (m, k, 1)
-        hdvec_exp = self._s_hdvec.unsqueeze(0)         # (1, k, n)
+        # #Non-linear feature bundling
+        # nodes_exp = nodes.unsqueeze(2)                 # (m, k, 1)
+        # hdvec_exp = self._s_hdvec.unsqueeze(0)         # (1, k, n)
 
-        # Hadamard product, then activation
-        hadamard = nodes_exp * hdvec_exp      # (m, k, n)
-        activated = torch.cos(hadamard + self._bias)
+        # # Hadamard product, then activation
+        # hadamard = nodes_exp * hdvec_exp      # (m, k, n)
+        # activated = torch.cos(hadamard + self._bias)
 
-        # Sum over the k dimension and normalize
-        encoded_nodes = activated.sum(dim=1) / self._node_dim
+        # # Sum over the k dimension and normalize
+        # encoded_nodes = activated.sum(dim=1) / self._node_dim
         
-        #Encode position by permutation
+        # #Encode position by permutation
         perm_encoded_nodes = permute_rows_by_shifts(encoded_nodes, index_vector)
         
         #Bundle nodes of a given state together
         group_bundle : Tensor = torch.zeros((batch_index.max() + 1, perm_encoded_nodes.shape[1]), dtype=perm_encoded_nodes.dtype)
         group_bundle.index_add_(0, batch_index, perm_encoded_nodes)
         group_bundle = group_bundle[batch_index]
+        
+        #Activate
+        encoded_nodes = torch.cos(encoded_nodes)
         
         #Permute vector representing all devices by one so dissimilar to vector of any specific device
         group_bundle = permute_rows_by_shifts(group_bundle, torch.ones(group_bundle.shape[0], dtype=torch.int64))
