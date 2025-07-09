@@ -8,7 +8,7 @@ from git import Repo
 from utils import Config
 from training_pipeline import train
 
-PROJECT_NAME = 'RelHD Encoder'
+PROJECT_NAME = 'Bundle Feature Encoder'
 MAIN_EXPERIMENT_NAME = 'non-linear-encoder-cleaned'
 NUM_RUNS = 1
 OTHER_HPARAMS = { #Just the default params that may be different than the ones in the training file
@@ -17,7 +17,7 @@ OTHER_HPARAMS = { #Just the default params that may be different than the ones i
     'type_agent' : 'hdc_mil',
     'wandb' : True,
     'tensorboard' : False,
-    'graph' : True,
+    'graph' : False,
     'gpu' : True,
     'bipolar': False,
     'critic_lr': 3e-4

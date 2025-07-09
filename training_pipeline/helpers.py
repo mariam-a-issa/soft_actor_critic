@@ -16,11 +16,15 @@ def clean_state(s : NDArray | tuple, graph : bool, env : gym.Env) -> Tensor | Da
     """Will clean up the state and return it.
         Many of the NASimEmu agents do not use the additonal information row (data about whether an action was successful)"""
     address_size = env.env.env.scenario.address_space_bounds[0] + env.env.env.scenario.address_space_bounds[1]
-    mask = np.ones(s[0].shape[1], dtype=bool)
+    if graph:
+        feats = s[0]
+    else:
+        feats = s
+    mask = np.ones(feats.shape[1], dtype=bool)
     mask[1 : address_size + 1] = False  # exclude columns 1 through n
     if graph:
         return Data(tensor(s[0][:, mask], dtype=float32), tensor(s[1], dtype=int64)) #0 is node feats and 1 is edge_index. Need to have the data types so that they match up with the rest of the model
-    return tensor(s[:-1, mask[1:]])
+    return tensor(s[:-1, mask])
 
 
 def get_action(state : NDArray, env : gym.Env, agent : Agent, graph : bool, explore_steps : int, steps : int) -> tuple[tuple[tuple[int, int], int], Tensor]:
