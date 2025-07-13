@@ -12,6 +12,7 @@ from .config import Config
 class LearningLogger:
     """Creates a logging class to handle specific types of logging for data about the perforamnce of the model"""
     _instance = None
+    _time = None
     
     def __new__(cls, base_dir : str = None, 
                 experiment_name : str = None, 
@@ -19,6 +20,10 @@ class LearningLogger:
                 config : Config = None):
         """Allows logger to follow singleton design"""
         if cls._instance is None or base_dir is not None or experiment_name is not None or hp_info is not None: #Build new instance when no new one exists or when the logging data is being changed
+            
+            if cls._time is None:
+                cls._time = datetime.now().strftime("%m_%d_%H_%M")
+        
             cls._instance = super(LearningLogger, cls).__new__(cls)
             cls._instance._initialize(base_dir, experiment_name, hp_info, config)
         return cls._instance
@@ -31,8 +36,6 @@ class LearningLogger:
         repo = git.Repo(search_parent_directories=True)
         sha = repo.head.object.hexsha
         
-        now = datetime.now()
-        formatted = now.strftime("%m_%d_%H_%M")
 
         if config.tensorboard:
             tense_writer = SummaryWriter(save_path)
@@ -42,10 +45,10 @@ class LearningLogger:
                 
         if config.wandb:
             writer = wb.init(project=config.wandb_project_name, 
-                             group=f'{formatted}_{sha[:config.num_sha_char]}_{experiment_name}_{hp_info}',
+                             group=f'{LearningLogger._time}_{sha[:config.num_sha_char]}_{experiment_name}_{hp_info}',
                              job_type = f'seed-{config.seed}',
                              config=self._hparams,
-                             name = f'{formatted}_{sha[:config.num_sha_char]}_{experiment_name}_{hp_info}_seed-{config.seed}',
+                             name = f'{datetime.now().strftime("%m_%d_%H_%M")}_{sha[:config.num_sha_char]}_{experiment_name}_{hp_info}_seed-{config.seed}',
                              notes = config.notes
                              )
             self._loggers['wandb'] = writer
