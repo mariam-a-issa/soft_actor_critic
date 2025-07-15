@@ -87,7 +87,6 @@ class Encoder:
         number_devices = number_devices[batch_index]
         
         #Bundle features together
-        grouped_products /= number_devices
         grouped_products : Tensor = torch.zeros((batch_index.max() + 1, encoded_devices.shape[1]), dtype=torch.cfloat)
         grouped_products.index_add_(0, batch_index, encoded_devices)
         grouped_products = grouped_products[batch_index]
