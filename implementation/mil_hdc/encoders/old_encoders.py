@@ -44,7 +44,6 @@ class Encoder:
         pos_enc = positional_encoding(index_vector, self._pos_enc_dim)
         nodes = torch.cat((nodes, pos_enc), dim = 1)
         encoded_nodes = nodes @ self._s_hdvec + self._bias
-        encoded_nodes = permute_rows_by_shifts(encoded_nodes, index_vector)
 
         #Bundle them total state nodes together
         grouped_products : Tensor = torch.zeros((batch_index.max() + 1, encoded_nodes.shape[1]), dtype=encoded_nodes.dtype)
