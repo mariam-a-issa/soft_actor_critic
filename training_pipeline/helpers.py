@@ -24,6 +24,7 @@ def clean_state(s : NDArray | tuple, graph : bool, env : gym.Env) -> Tensor | Da
     mask[1 : address_size + 1] = False  # exclude columns 1 through n
     if graph:
         return Data(tensor(s[0][:, mask], dtype=float32), tensor(s[1], dtype=int64)) #0 is node feats and 1 is edge_index. Need to have the data types so that they match up with the rest of the model
+    return tensor(s[:-1])
     return tensor(s[:-1, mask])
 
 
