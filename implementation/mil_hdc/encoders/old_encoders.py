@@ -66,7 +66,7 @@ class Encoder:
         group_bundle = group_bundle[batch_index]
         
         #Activate
-        perm_encoded_nodes = torch.cos(encoded_nodes)
+        perm_encoded_nodes = torch.cos(perm_encoded_nodes)
         
         #Permute vector representing all devices by one so dissimilar to vector of any specific device
         group_bundle = permute_rows_by_shifts(group_bundle, torch.ones(group_bundle.shape[0], dtype=torch.int64))
