@@ -45,9 +45,9 @@ class Encoder:
         #Bind them all together by adding them then exp
         batch_index = generate_batch_index(state_index)
         grouped_products : Tensor = torch.zeros((batch_index.max() + 1, encoded_devices.shape[1]), dtype=torch.float)
+        encoded_devices = torch.exp(1j * encoded_devices)
         grouped_products.index_add_(0, batch_index, encoded_devices)
         grouped_products = grouped_products[batch_index]
-        grouped_products = torch.exp(1j * grouped_products)
         
         #Normalize bundle
         number_devices = torch.diff(state_index)
@@ -58,7 +58,7 @@ class Encoder:
         grouped_products = permute_rows_by_shifts(grouped_products, number_devices)
         
         #Bind the device to be looked at
-        grouped_products += encoded_devices  
+        grouped_products = encoded_devices + grouped_products  
     
         return grouped_products, batch_index
         
