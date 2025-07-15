@@ -9,7 +9,7 @@ from utils import Config
 from training_pipeline import train
 
 PROJECT_NAME = 'Bundle Feature Encoder'
-MAIN_EXPERIMENT_NAME = 'non-linear-using-exponentiation'
+MAIN_EXPERIMENT_NAME = 'non-linear-using-exponentiation-alternative-bug'
 NUM_RUNS = 1
 OTHER_HPARAMS = { #Just the default params that may be different than the ones in the training file
     'wandb_project_name' : PROJECT_NAME,

@@ -36,32 +36,31 @@ class Encoder:
             tuple[Tensor, Tensor]: First element is the encoded state, the second element is the batch index to save computation
         """
         
+        #Encode the devices
         index_vector = generate_counting_tensor(state_index)
-        batch_index = generate_batch_index(state_index)
-        number_nodes = torch.diff(state_index)[batch_index].view(-1, 1)
-        
-        #Encode the nodes
         pos_enc = positional_encoding(index_vector, self._pos_enc_dim)
         nodes = torch.cat((nodes, pos_enc), dim = 1)
-        encoded_nodes = nodes @ self._s_hdvec + self._bias
-        encoded_nodes = permute_rows_by_shifts(encoded_nodes, index_vector)
+        encoded_devices = nodes @ self._s_hdvec + self._bias
         
-        #Bundle them total state nodes together
-        grouped_products : Tensor = torch.zeros((batch_index.max() + 1, encoded_nodes.shape[1]), dtype=encoded_nodes.dtype)
-        grouped_products.index_add_(0, batch_index, encoded_nodes)
+        #Bind them all together by adding them then exp
+        batch_index = generate_batch_index(state_index)
+        grouped_products : Tensor = torch.zeros((batch_index.max() + 1, encoded_devices.shape[1]), dtype=torch.float)
+        grouped_products.index_add_(0, batch_index, encoded_devices)
         grouped_products = grouped_products[batch_index]
+        grouped_products = torch.exp(1j * grouped_products)
         
-        #Put in exponential form
-        encoded_nodes = torch.exp(1j * encoded_nodes)
+        #Normalize bundle
+        number_devices = torch.diff(state_index)
+        number_devices = number_devices[batch_index]
+        grouped_products /= number_devices.unsqueeze(dim=1)
         
-        #Permute total state by one
-        grouped_products = permute_rows_by_shifts(grouped_products, torch.ones(grouped_products.shape[0], dtype=torch.int64))
+        #Repermute them to have information about the number of devices
+        grouped_products = permute_rows_by_shifts(grouped_products, number_devices)
         
-        #Bind total state and each node and normalize
-        final_encode = encoded_nodes + grouped_products / number_nodes
-        
-        return final_encode, batch_index    
+        #Bind the device to be looked at
+        grouped_products += encoded_devices  
     
+        return grouped_products, batch_index
         
     def to(self, device : torch.device) -> None:
         self._s_hdvec.to(device)
