@@ -9,7 +9,7 @@ from utils import Config
 from training_pipeline import train
 
 PROJECT_NAME = 'Graph Bundle Bind Encoder'
-MAIN_EXPERIMENT_NAME = 'gbubi_encoder_larger_variance_nn_learner_one_normalize'
+MAIN_EXPERIMENT_NAME = 'gbubi_encoder_larger_variance_nn_learner_one_normalize_less_ent'
 NUM_RUNS = 1
 OTHER_HPARAMS = { #Just the default params that may be different than the ones in the training file
     'wandb_project_name' : PROJECT_NAME,
@@ -26,6 +26,8 @@ OTHER_HPARAMS = { #Just the default params that may be different than the ones i
     'hypervec_dim' : 1024,
     'critic_lr' : 3e-5,
     'policy_lr' : 3e-5,
+    'target_entropy_start' : .6,
+    'target_entropy_end' : .1
 }
 
 def train_hyper_param(name : str, values : list[float], seeds : list[int]):
