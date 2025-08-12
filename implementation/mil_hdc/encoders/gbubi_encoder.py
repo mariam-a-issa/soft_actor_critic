@@ -69,12 +69,12 @@ class GBUBIEncoder:
         #Setup Tensors
         is_subnet = nodes.x[:, 0] == 1
         node_features = 2 * nodes.x[~is_subnet].float() - 1 # n x f. Number of nodes x number of features. Do 2*x - 1 for hamming distance
-        encoded_features = node_features[:, 1:] @ self._base, p=2, dim = 1 # n x d
+        encoded_features = node_features[:, 1:] @ self._base # n x d
 
         #Build Subnets
         adj_matrix = to_dense_adj(nodes.edge_index).squeeze()
         subnet_node_adj_matrix = adj_matrix[is_subnet][:, ~is_subnet] # sub_nets x n
-        encoded_subnet = subnet_node_adj_matrix @ encoded_features, p=2, dim = 1 #sub_nets x d
+        encoded_subnet = subnet_node_adj_matrix @ encoded_features #sub_nets x d
         perm_encoded_subnet = permute_rows_by_shifts(encoded_subnet, torch.ones(encoded_subnet.shape[0], dtype=torch.int))
         
         #Build Subnet Connections
