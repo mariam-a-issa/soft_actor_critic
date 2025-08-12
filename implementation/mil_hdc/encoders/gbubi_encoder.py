@@ -50,8 +50,6 @@ class GBUBIEncoder:
 
         if bipolar:
             self._base = torch.where(self._base < 0, torch.tensor(-1.0), torch.tensor(1.0))
-        else:
-            self._base = F.normalize(self._base, p=2, dim=1)
 
         
 
@@ -123,7 +121,7 @@ class GBUBIEncoder:
             deg = A.sum(dim=1, keepdim=True).clamp_min(1).to(out.dtype)
             out = out / deg
 
-        return F.normalize(out, p = 2, dim = 1)
+        return out
 
 
     def to(self, device : torch.device) -> None:
