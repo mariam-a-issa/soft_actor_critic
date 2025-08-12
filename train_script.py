@@ -24,8 +24,6 @@ OTHER_HPARAMS = { #Just the default params that may be different than the ones i
     'sample_size' : 128,
     'variance' : 2,
     'hypervec_dim' : 1024,
-    'critic_lr' : 3e-5,
-    'policy_lr' : 3e-5,
     'target_entropy_start' : .6,
     'target_entropy_end' : .1
 }
