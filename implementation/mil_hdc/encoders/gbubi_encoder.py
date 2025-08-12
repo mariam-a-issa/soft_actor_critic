@@ -85,12 +85,12 @@ class GBUBIEncoder:
 
         #Embedded devices
         expanded_graphs = bundled[nodes.batch[~is_subnet]]
-        embed_devices = encoded_features * permute_rows_by_shifts(expanded_graphs, torch.ones(expanded_graphs.shape[0], dtype=torch.int))
+        embed_devices = (encoded_features + permute_rows_by_shifts(expanded_graphs, torch.ones(expanded_graphs.shape[0], dtype=torch.int))) / math.sqrt(2)
 
         #RBF Kernal Activation
         #activated_devices = torch.exp(1j * (embed_devices @ self._rbf_base + self._bias))
 
-        return F.normalize(embed_devices), nodes.batch[~is_subnet]
+        return encoded_features, permute_rows_by_shifts(expanded_graphs, torch.ones(expanded_graphs.shape[0], dtype=torch.int))
 
     def _bind_subnets_hadamard(self, 
         encoded_subnet: torch.Tensor,        # [N, D]

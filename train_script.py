@@ -9,7 +9,7 @@ from utils import Config
 from training_pipeline import train
 
 PROJECT_NAME = 'Graph Bundle Bind Encoder'
-MAIN_EXPERIMENT_NAME = 'gbubi_encoder_larger_variance_nn_learner_diff_normalize'
+MAIN_EXPERIMENT_NAME = 'relhd_with_nn'
 NUM_RUNS = 1
 OTHER_HPARAMS = { #Just the default params that may be different than the ones in the training file
     'wandb_project_name' : PROJECT_NAME,

@@ -12,7 +12,7 @@ from torch_geometric.data import Data, Batch
 from utils import EPS, LearningLogger
 from .architecture import MultiMessagePassingWithAttention, MultiMessagePassing
 from ..model_utils import reshape, positional_encoding
-from ..mil_hdc.encoders import GBUBIEncoder
+from ..mil_hdc.encoders import GBUBIEncoder, RelEncoder
 
 class Embedding(nn.Module):
     
@@ -124,7 +124,7 @@ class HDCEmbedding():
                  embed_dim : int,
                  node_dim : int) -> None:
         
-        self._embed = GBUBIEncoder(embed_dim, node_dim=node_dim, bipolar=False, variance=1)
+        self._embed = RelEncoder(embed_dim, node_dim=node_dim, bipolar=False)
 
     def __call__(self, states : Batch, state_index : Tensor) -> tuple[Tensor, Tensor]:
         return self._embed(states, state_index)
