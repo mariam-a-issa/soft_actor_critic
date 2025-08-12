@@ -75,7 +75,7 @@ class RelHD(object):
         hop_2 = A_2_M @ encoded_nodes
         hop_3 = A_3_M @ encoded_nodes
         
-        return encoded_nodes * self._phi0 + hop_2 * self._phi1 + hop_3 * self._phi2, generate_batch_index(state_index)
+        return encoded_nodes * self._phi0 + hop_2 * self._phi1 + hop_3 * self._phi2, nodes.batch[~is_subnet]
     
     def to(self, device : torch.device):
         self._base_hvecs.to(device)
