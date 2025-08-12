@@ -12,6 +12,7 @@ from torch_geometric.data import Data, Batch
 from utils import EPS, LearningLogger
 from .architecture import MultiMessagePassingWithAttention, MultiMessagePassing
 from ..model_utils import reshape, positional_encoding
+from ..mil_hdc.encoders import GBUBIEncoder
 
 class Embedding(nn.Module):
     
@@ -115,6 +116,18 @@ class GraphEmbedding(nn.Module):
         mask = states.x[:, 0] != 1 #Keep the ones that do not equal one 
         
         return x[mask], batch_index[mask]
+    
+
+class HDCEmbedding(nn.Module):
+
+    def __init__(self,
+                 embed_dim : int,
+                 node_dim : int) -> None:
+        
+        self._embed = GBUBIEncoder(embed_dim, node_dim=node_dim, bipolar=False, variance=1)
+
+    def forward(self, states : Batch, state_index : Tensor) -> tuple[Tensor, Tensor]:
+        return self._embed(states, state_index)
         
  
 class Actor(nn.Module):

@@ -7,7 +7,7 @@ import torch
 from torch_geometric.data import Data, Batch
 
 from utils import GraphMemoryBuffer, DynamicMemoryBuffer, Transition, Config, group_to_boundaries_torch
-from .implementation import AttentionEmbedding, GraphEmbedding, Embedding, Actor, QFunction, QFunctionTarget
+from .implementation import AttentionEmbedding, GraphEmbedding, Embedding, HDCEmbedding, Actor, QFunction, QFunctionTarget
 from ..agents import Agent
 from .. import sac
 
@@ -18,41 +18,45 @@ class MILNNAgent(Agent):
         super().__init__(config.target_update, config.update_frequency, config.learning_steps)
     
     #When creating the embedding functions understand the output sizes of the embeddings.
-        if config.attention:
-            self._q_embedding = AttentionEmbedding(embed_dim=config.hidden_dim, 
-                                                   pos_enc_dim=config.pos_enc_dim, 
-                                                   node_dim=node_dim, 
-                                                   num_heads=config.num_heads)
+        # if config.attention:
+        #     self._q_embedding = AttentionEmbedding(embed_dim=config.hidden_dim, 
+        #                                            pos_enc_dim=config.pos_enc_dim, 
+        #                                            node_dim=node_dim, 
+        #                                            num_heads=config.num_heads)
             
-            self._target_q_embedding = deepcopy(self._q_embedding)
+        #     self._target_q_embedding = deepcopy(self._q_embedding)
 
-            self._policy_embedding = AttentionEmbedding(embed_dim=config.hidden_dim, 
-                                                   pos_enc_dim=config.pos_enc_dim, 
-                                                   node_dim=node_dim, 
-                                                   num_heads=config.num_heads)
-        elif config.graph:
-            #Need to multiply by two here as we do not concat our global embedding as there is non in this model
-            self._q_embedding = GraphEmbedding(embed_dim=config.hidden_dim * 2, 
-                                               pos_enc_dim=config.pos_enc_dim,
-                                               node_dim=node_dim, 
-                                               message_passes=config.messages_passes)
+        #     self._policy_embedding = AttentionEmbedding(embed_dim=config.hidden_dim, 
+        #                                            pos_enc_dim=config.pos_enc_dim, 
+        #                                            node_dim=node_dim, 
+        #                                            num_heads=config.num_heads)
+        # elif config.graph:
+        #     #Need to multiply by two here as we do not concat our global embedding as there is non in this model
+        #     self._q_embedding = GraphEmbedding(embed_dim=config.hidden_dim * 2, 
+        #                                        pos_enc_dim=config.pos_enc_dim,
+        #                                        node_dim=node_dim, 
+        #                                        message_passes=config.messages_passes)
             
-            self._target_q_embedding = deepcopy(self._q_embedding)
+        #     self._target_q_embedding = deepcopy(self._q_embedding)
 
-            self._policy_embedding = GraphEmbedding(embed_dim=config.hidden_dim * 2, 
-                                               pos_enc_dim=config.pos_enc_dim,
-                                               node_dim=node_dim, 
-                                               message_passes=config.messages_passes)
-        else:
-            self._q_embedding = Embedding(embed_dim=config.hidden_dim, 
-                                          pos_enc_dim=config.pos_enc_dim, 
-                                          node_dim=node_dim)
+        #     self._policy_embedding = GraphEmbedding(embed_dim=config.hidden_dim * 2, 
+        #                                        pos_enc_dim=config.pos_enc_dim,
+        #                                        node_dim=node_dim, 
+        #                                        message_passes=config.messages_passes)
+        # else:
+        #     self._q_embedding = Embedding(embed_dim=config.hidden_dim, 
+        #                                   pos_enc_dim=config.pos_enc_dim, 
+        #                                   node_dim=node_dim)
             
-            self._target_q_embedding = deepcopy(self._q_embedding)
+        #     self._target_q_embedding = deepcopy(self._q_embedding)
 
-            self._policy_embedding = Embedding(embed_dim=config.hidden_dim, 
-                                            pos_enc_dim=config.pos_enc_dim, 
-                                            node_dim=node_dim)
+        #     self._policy_embedding = Embedding(embed_dim=config.hidden_dim, 
+        #                                     pos_enc_dim=config.pos_enc_dim, 
+        #                                     node_dim=node_dim)
+
+        self._q_embedding = HDCEmbedding(embed_dim=config.hypervec_dim, node_dim=node_dim)
+        self._target_q_embedding = deepcopy(self._q_embedding)
+        self._policy_embedding = deepcopy(self._q_embedding)
 
         config.hidden_dim *= 2 #The hidden size doubles after the concatination of the global embedding    
 
@@ -67,8 +71,8 @@ class MILNNAgent(Agent):
                             autotune=config.autotune, 
                             alpha_value=config.alpha_value)
 
-        self._optim_critic = torch.optim.Adam([*self._q_embedding.parameters(), *self._q_func.parameters()], lr=config.critic_lr)
-        self._optim_policy = torch.optim.Adam([*self._policy_embedding.parameters(), *self._policy.parameters()], lr=config.policy_lr)
+        self._optim_critic = torch.optim.Adam([*self._q_func.parameters()], lr=config.critic_lr)
+        self._optim_policy = torch.optim.Adam([*self._policy.parameters()], lr=config.policy_lr)
         self._optim_alpha = torch.optim.Adam([self._alpha._log_alpha], lr = config.alpha_lr)
 
         if config.graph:
