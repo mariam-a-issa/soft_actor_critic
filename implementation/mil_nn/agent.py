@@ -60,9 +60,9 @@ class MILNNAgent(Agent):
 
         config.hidden_dim *= 2 #The hidden size doubles after the concatination of the global embedding    
 
-        self._q_func = QFunction(embed_dim=config.hidden_dim, action_dim=action_dim)
+        self._q_func = QFunction(embed_dim=config.hypervec_dim, hidden_dim=config.hidden_dim, action_dim=action_dim)
         self._q_func_target = QFunctionTarget(self._q_func, tau=config.tau)
-        self._policy = Actor(embed_dim=config.hidden_dim, action_dim=action_dim)
+        self._policy = Actor(embed_dim=config.hypervec_dim, hidden_dim=config.hidden_dim, action_dim=action_dim)
         self._alpha = sac.Alpha(start=config.target_entropy_start, 
                             end=config.target_entropy_end, 
                             midpoint=config.target_entropy_midpoint, 
@@ -148,14 +148,14 @@ class MILNNAgent(Agent):
         self._optim_critic.zero_grad()
         critic_loss.backward()
         
-        grad_policy = self.calc_grad_norm([*self._policy_embedding.parameters(), *self._policy.parameters()])
-        grad_q_func = self.calc_grad_norm([*self._q_embedding.parameters(), *self._q_func.parameters()])
+        grad_policy = self.calc_grad_norm([*self._policy.parameters()])
+        grad_q_func = self.calc_grad_norm([*self._q_func.parameters()])
 
         self._optim_alpha.zero_grad()
         alpha_loss.backward()
         
         if self._config.grad_clip:
-            utils.clip_grad_norm_([*self._q_embedding.parameters(), *self._q_func.parameters()], self._config.grad_clip)
+            utils.clip_grad_norm_([*self._q_func.parameters()], self._config.grad_clip)
         
         self._optim_policy.step()
         self._optim_critic.step()

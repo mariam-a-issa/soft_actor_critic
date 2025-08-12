@@ -118,7 +118,7 @@ class GraphEmbedding(nn.Module):
         return x[mask], batch_index[mask]
     
 
-class HDCEmbedding(nn.Module):
+class HDCEmbedding():
 
     def __init__(self,
                  embed_dim : int,
@@ -126,18 +126,21 @@ class HDCEmbedding(nn.Module):
         
         self._embed = GBUBIEncoder(embed_dim, node_dim=node_dim, bipolar=False, variance=1)
 
-    def forward(self, states : Batch, state_index : Tensor) -> tuple[Tensor, Tensor]:
+    def __call__(self, states : Batch, state_index : Tensor) -> tuple[Tensor, Tensor]:
         return self._embed(states, state_index)
         
+    def to(self, device):
+        self._embed.to(device)
  
 class Actor(nn.Module):
     
     def __init__(self,
+                 hidden_dim : int,
                  embed_dim : int,
                  action_dim : int):
         super().__init__()
-        self._device_select = nn.Linear(embed_dim, 1)
-        self._action_select = nn.Linear(embed_dim, action_dim)
+        self._device_select = nn.Sequential(nn.Linear(embed_dim, hidden_dim), nn.ReLU(), nn.Linear(hidden_dim, 1))
+        self._action_select = nn.Sequential(nn.Linear(embed_dim, hidden_dim), nn.ReLU(), nn.Linear(hidden_dim, action_dim))
         
     def forward(self, embed_states : Tensor, batch_index : Tensor) -> Tensor:
         """Will calculate the probs and log probs of taking a specific action on a device
@@ -194,10 +197,11 @@ class Actor(nn.Module):
 class QModel(nn.Module):
     def __init__(self,
                 embed_dim : int,
+                hidden_dim : int,
                 action_dim : int):
         super().__init__()
-        self._device_q = nn.Sequential(nn.Linear(embed_dim, embed_dim), nn.ReLU(), nn.Linear(embed_dim, 2))
-        self._action_q = nn.Sequential(nn.Linear(embed_dim, embed_dim), nn.ReLU(), nn.Linear(embed_dim, action_dim))
+        self._device_q = nn.Sequential(nn.Linear(embed_dim, hidden_dim), nn.ReLU(), nn.Linear(hidden_dim, 2))
+        self._action_q = nn.Sequential(nn.Linear(embed_dim, hidden_dim), nn.ReLU(), nn.Linear(hidden_dim, action_dim))
         
     def forward(self, embed_state : Tensor, batch_index : Tensor, state_index : Tensor, description : str = None) -> Tensor:
         """Will calculate the Q value for each action on every device passed in
@@ -237,10 +241,11 @@ class QFunction(nn.Module):
     
     def __init__(self, 
                  embed_dim : int,
+                 hidden_dim :int, 
                  action_dim : int):
         super().__init__()
-        self._q1 = QModel(embed_dim, action_dim)
-        self._q2 = QModel(embed_dim, action_dim)
+        self._q1 = QModel(embed_dim, hidden_dim, action_dim)
+        self._q2 = QModel(embed_dim, hidden_dim, action_dim)
         
     def forward(self, embed_state : Tensor, batch_index : Tensor, state_index : Tensor) -> tuple[Tensor, Tensor]:
         q1 = self._q1(embed_state, batch_index, state_index, description='Q1')
