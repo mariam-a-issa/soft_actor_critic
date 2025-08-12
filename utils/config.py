@@ -60,6 +60,9 @@ class Config:
     
     pos_enc_dim: int = 8
     """Size of positional encoding (if used)"""
+
+    variance : float = 1
+    """The variance when sampling HDC basis vectors"""
     
     type_agent: Literal['hdc', 'nn', 'nn_mil', 'hdc_mil'] = 'hdc_agent'
     """Type of agent to use: 
@@ -93,6 +96,7 @@ class Config:
     
     update_frequency: int = 1
     """Frequency of policy updates relative to environment steps"""
+
 
     ### Environment Parameters ###
     environment_info: Dict = field(default_factory=lambda: {

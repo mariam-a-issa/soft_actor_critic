@@ -13,7 +13,7 @@ Note: if we were to do bipolar hypervectors then we could normalize by the sqrt 
       if we were to do random gaussian hypervectors then we would normalize by the norm
 
 '''
-from math import pi
+import math
 
 import torch
 import torch.nn.functional as F
@@ -29,7 +29,8 @@ class GBUBIEncoder:
     def __init__(self, 
                  dim : int,
                  node_dim : int,
-                 bipolar : bool = False) -> None:
+                 bipolar : bool = False,
+                 variance : float = 1) -> None:
         """Will create Graph Bundle Bind Encoder 
 
         Args:
@@ -43,8 +44,8 @@ class GBUBIEncoder:
         self._node_dim = node_dim
         
         self._base = torch.randn(node_dim - 1, dim)
-        self._rbf_base = torch.randn(dim, dim)
-        self._bias = 2 * pi * torch.randn(1, dim)
+        self._rbf_base = torch.randn(dim, dim) * math.sqrt(variance)
+        self._bias = 2 * math.pi * torch.randn(1, dim)
 
 
         if bipolar:
