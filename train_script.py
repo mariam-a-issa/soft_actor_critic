@@ -8,8 +8,8 @@ from git import Repo
 from utils import Config
 from training_pipeline import train
 
-PROJECT_NAME = 'Bundle Feature Encoder'
-MAIN_EXPERIMENT_NAME = 'bind all nodes together, shift by one, normalize bundle with device'
+PROJECT_NAME = 'Graph Bundle Bind Encoder'
+MAIN_EXPERIMENT_NAME = 'gbubi_encoder'
 NUM_RUNS = 1
 OTHER_HPARAMS = { #Just the default params that may be different than the ones in the training file
     'wandb_project_name' : PROJECT_NAME,
@@ -17,10 +17,11 @@ OTHER_HPARAMS = { #Just the default params that may be different than the ones i
     'type_agent' : 'hdc_mil',
     'wandb' : True,
     'tensorboard' : False,
-    'graph' : False,
+    'graph' : True,
     'gpu' : True,
     'bipolar': False,
-    'critic_lr': 3e-4
+    'critic_lr': 3e-4,
+    'sample_size' : 256
 }
 
 def train_hyper_param(name : str, values : list[float], seeds : list[int]):

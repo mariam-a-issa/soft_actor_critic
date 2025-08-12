@@ -7,7 +7,7 @@ from torch_geometric.data import Batch
 
 from utils import DynamicMemoryBuffer, GraphMemoryBuffer, Transition, Config, group_to_boundaries_torch
 from .implementation import Actor, QFunction, QFunctionTarget
-from .encoders import OldEncoder, RelEncoder
+from .encoders import OldEncoder, RelEncoder, GBUBIEncoder
 from ..agents import Agent
 from .. import sac
 
@@ -17,9 +17,10 @@ class MILHDCAgent(Agent):
         super().__init__(config.target_update, config.update_frequency, config.learning_steps)
         
         if config.graph:
-            self._embed = RelEncoder(dim=config.hypervec_dim,
-                                     node_dim=node_dim,
-                                     bipolar=config.bipolar)
+            self._embed = GBUBIEncoder(config.hypervec_dim,
+                                       node_dim=node_dim,
+                                       bipolar=config.bipolar)
+            
             self._memory = GraphMemoryBuffer(buffer_length=config.buffer_size,
                                              sample_size=config.sample_size,
                                              mask_subnet_state_index=True)

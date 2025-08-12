@@ -61,7 +61,7 @@ def get_train_env_info(env : gym.Env, config : Config) -> tuple[int, int, gym.En
         env.reset()
         state_space += 1 # +1 feature (node/subnet) from NASimEmu Agents and seems to be used only when using graphs
         
-    #state_space -= env.env.env.scenario.address_space_bounds[0] + env.env.env.scenario.address_space_bounds[1]
+    state_space -= env.env.env.scenario.address_space_bounds[0] + env.env.env.scenario.address_space_bounds[1]
     
     return action_space, state_space, env   
 
