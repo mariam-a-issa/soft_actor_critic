@@ -21,8 +21,9 @@ OTHER_HPARAMS = { #Just the default params that may be different than the ones i
     'gpu' : True,
     'bipolar': False,
     'critic_lr': 3e-4,
-    'sample_size' : 256,
-    'variance' : 2
+    'sample_size' : 64,
+    'variance' : 2,
+    'hypervec_dim' : 1028
 }
 
 def train_hyper_param(name : str, values : list[float], seeds : list[int]):
