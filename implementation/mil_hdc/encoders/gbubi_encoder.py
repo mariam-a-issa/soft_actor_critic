@@ -47,6 +47,8 @@ class GBUBIEncoder:
         self._rbf_base = torch.randn(dim, dim) * math.sqrt(variance)
         self._bias = 2 * math.pi * torch.randn(1, dim)
 
+        self._discov_base = torch.randn(1, dim)
+
 
         if bipolar:
             self._base = torch.where(self._base < 0, torch.tensor(-1.0), torch.tensor(1.0))
@@ -88,9 +90,15 @@ class GBUBIEncoder:
         embed_devices = (encoded_features + permute_rows_by_shifts(expanded_graphs, torch.ones(expanded_graphs.shape[0], dtype=torch.int))) / math.sqrt(2)
 
         #RBF Kernal Activation
-        #activated_devices = torch.exp(1j * (embed_devices @ self._rbf_base + self._bias))
+        activated_devices = torch.exp(1j * (embed_devices @ self._rbf_base + self._bias))
 
-        return encoded_features, nodes.batch[~is_subnet]
+        #Bind feature of normalized order of discovery
+        num_devices = scatter_add(state_index, nodes.batch)
+        prop_devices : Tensor = state_index / num_devices[nodes.batch]
+        discov_feat = torch.exp(1j * (prop_devices.unsqueeze(dim=1) * self._discov_base))
+        devices = activated_devices * discov_feat
+
+        return devices, nodes.batch[~is_subnet]
 
     def _bind_subnets_hadamard(self, 
         encoded_subnet: torch.Tensor,        # [N, D]
