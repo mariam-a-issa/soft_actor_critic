@@ -9,7 +9,7 @@ from utils import Config
 from training_pipeline import train
 
 PROJECT_NAME = 'Graph Bundle Bind Encoder'
-MAIN_EXPERIMENT_NAME = 'gbubi_encoder_diff_order_of_activation_diff_tau'
+MAIN_EXPERIMENT_NAME = 'gbubi_encoder_diff_order_of_activation_diff_tau-fast'
 NUM_RUNS = 1
 OTHER_HPARAMS = { #Just the default params that may be different than the ones in the training file
     'wandb_project_name' : PROJECT_NAME,
@@ -20,12 +20,12 @@ OTHER_HPARAMS = { #Just the default params that may be different than the ones i
     'graph' : True,
     'gpu' : True,
     'bipolar': False,
-    'critic_lr': 3e-5,
-    'policy_lr': 3e-5,
+    'critic_lr': 3e-4,
+    'policy_lr': 3e-4,
     'sample_size' : 128,
     'variance' : 2,
     'hypervec_dim' : 1024,
-    'tau': .01
+    'tau': .04
 }
 
 def train_hyper_param(name : str, values : list[float], seeds : list[int]):
@@ -84,4 +84,4 @@ def _get_note() -> str:
 
 if __name__ == '__main__':
     os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8' #Needed since training will have to be deterministic. More info at https://docs.nvidia.com/cuda/cublas/index.html#cublasApi_reproducibility
-    train_hyper_param('policy_lr', [3e-5], [0, 1, 2])
+    train_hyper_param('policy_lr', [3e-4], [0, 1, 2])
