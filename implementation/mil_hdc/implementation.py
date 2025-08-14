@@ -26,8 +26,8 @@ class Actor(nn.Module):
         self._action = nn.Linear(dim, action_dim, dtype=torch.cfloat, bias=False)
         self._device = nn.Linear(dim, 1, dtype = torch.cfloat, bias=False)
 
-        self._action.weight = nn.Parameter(torch.zeros(action_dim, dim, dtype=torch.cfloat))
-        self._device.weight = nn.Parameter(torch.zeros(1, dim, dtype=torch.cfloat))
+        #self._action.weight = nn.Parameter(torch.zeros(action_dim, dim, dtype=torch.cfloat))
+        #self._device.weight = nn.Parameter(torch.zeros(1, dim, dtype=torch.cfloat))
         
         self._dim = dim
         
