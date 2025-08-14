@@ -9,7 +9,7 @@ from utils import Config
 from training_pipeline import train
 
 PROJECT_NAME = 'Graph Bundle Bind Encoder'
-MAIN_EXPERIMENT_NAME = 'gbubi_encoder_diff_order_of_activation_normaliz_subnet_device_polynomial'
+MAIN_EXPERIMENT_NAME = 'gbubi_encoder_diff_order_of_activation_normaliz_subnet_device_linear'
 NUM_RUNS = 1
 OTHER_HPARAMS = { #Just the default params that may be different than the ones in the training file
     'wandb_project_name' : PROJECT_NAME,
