@@ -69,7 +69,7 @@ class GBUBIEncoder:
         adj_matrix = to_dense_adj(nodes.edge_index).squeeze()
         subnet_node_adj = adj_matrix[is_subnet][:, ~is_subnet] # sub_nets x n
         num_devices_in_sub = subnet_node_adj.sum(dim=1).view(-1, 1)
-        encoded_subnet = subnet_node_adj.to(torch.cfloat) @ encoded_features / num_devices_in_sub #sub_nets x d (normalize amount of devices in a subnet)
+        encoded_subnet = subnet_node_adj.to(torch.cfloat) @ encoded_features / num_devices_in_sub.sqrt() #sub_nets x d (normalize amount of devices in a subnet)
         perm_encoded_subnet = permute_rows_by_shifts(encoded_subnet, torch.ones(encoded_subnet.shape[0], dtype=torch.int))
         
         #Build Subnet Connections
@@ -82,7 +82,7 @@ class GBUBIEncoder:
 
         num_graphs = int(subnet_batch.max()) + 1
         num_connections = 2 * (subnet_subnet_adj.sum(dim=1) + 1).view(-1, 1) #2x for the symmetric and + 1 for the self loop
-        binded_subnets = binded_subnets / num_connections #Normalize before the scatter add in order to make easier. Possible as normalizing term can be distributed
+        binded_subnets = binded_subnets / num_connections.sqrt() #Normalize before the scatter add in order to make easier. Possible as normalizing term can be distributed
 
         bundled = scatter_add(binded_subnets, subnet_batch, dim=0, dim_size=num_graphs)  # graph x d
         expanded_graphs = bundled[device_batch]
