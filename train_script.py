@@ -24,7 +24,7 @@ OTHER_HPARAMS = { #Just the default params that may be different than the ones i
     'policy_lr': 3e-5,
     'sample_size' : 128,
     'hypervec_dim' : 1024,
-    'tau': .05,
+    'tau': .1,
     'variance' : .75
 }
 
