@@ -25,7 +25,7 @@ OTHER_HPARAMS = { #Just the default params that may be different than the ones i
     'sample_size' : 128,
     'variance' : 2,
     'hypervec_dim' : 1024,
-    'tau': .5
+    'tau': .01
 }
 
 def train_hyper_param(name : str, values : list[float], seeds : list[int]):
