@@ -19,6 +19,7 @@ class MILHDCAgent(Agent):
         if config.graph:
             self._embed = GBUBIEncoder(config.hypervec_dim,
                                        node_dim=node_dim,
+                                       pos_enc_dim=config.pos_enc_dim,
                                        bipolar=config.bipolar,
                                        variance=config.variance)
             

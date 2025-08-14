@@ -22,13 +22,14 @@ from torch_geometric.data import Batch
 from torch_geometric.utils import to_dense_adj
 from torch_scatter import scatter_add
 
-from ...model_utils import permute_rows_by_shifts, generate_counting_tensor
+from ...model_utils import permute_rows_by_shifts, generate_counting_tensor, positional_encoding
 
 class GBUBIEncoder:
 
     def __init__(self, 
                  dim : int,
                  node_dim : int,
+                 pos_enc_dim : int,
                  bipolar : bool = False,
                  variance : float = 1) -> None:
         """Will create Graph Bundle Bind Encoder 
@@ -42,11 +43,10 @@ class GBUBIEncoder:
         self._bipolar = bipolar
         self._dim = dim
         self._node_dim = node_dim
+        self._pos_enc_dim = pos_enc_dim
         
-        self._subnet_base = torch.randn(node_dim-1, dim) * math.sqrt(variance)
-        self._node_base = torch.randn(node_dim, dim) * math.sqrt(variance)
-        self._discovery_base = torch.randn(1, dim) * math.sqrt(variance)
-        self._bias = 2 * math.pi * torch.randn(1, dim)
+        self._base = torch.randn(node_dim-1 + self._pos_enc_dim, dim) * variance
+        self._bias = 2 * math.pi * torch.rand(1, dim)
         
 
     def __call__(self, nodes : Batch, state_index : Tensor) -> tuple[Tensor, Tensor]:
@@ -59,11 +59,16 @@ class GBUBIEncoder:
         Returns:
             tuple[Tensor, Tensor]: First element is the encoded state, the second element is the batch index to save computation
         """
+        is_subnet = nodes.x[:, 0] == 1
+
+        #Add positional features
+        index_vector = generate_counting_tensor(state_index)
+        pos_enc = positional_encoding(index_vector, self._pos_enc_dim)
+        node_features = 2 * nodes.x[~is_subnet].float() - 1
+        node_features = torch.cat((node_features[:, 1:], pos_enc), dim = 1)
 
         #Setup Tensors
-        is_subnet = nodes.x[:, 0] == 1
-        node_features = 2 * nodes.x[~is_subnet].float() - .1 # n x f. Number of nodes x number of features. Do 2*x - 1 for hamming
-        encoded_features = torch.exp(1j * (node_features[:, 1:] @ self._subnet_base + self._bias[0])) # n x d
+        encoded_features = torch.exp(1j * (node_features @ self._base + self._bias[0])) # n x d
 
         #Build Subnets
         adj_matrix = to_dense_adj(nodes.edge_index).squeeze()
@@ -94,8 +99,7 @@ class GBUBIEncoder:
         node_features = torch.cat((node_features[:, 1:], prop_devices.view(-1, 1)), dim=1)
         
         #Encode Device
-        encoded_nodes = torch.exp(1j * (node_features @ self._node_base)) # n x d #Do not need a bias as we already have it from the graphs earlier
-        encoded_nodes = encoded_nodes * expanded_graphs
+        encoded_nodes = encoded_features * permute_rows_by_shifts(expanded_graphs, torch.ones(expanded_graphs.shape[0], dtype=torch.int))
 
         return encoded_nodes, nodes.batch[~is_subnet]
 
