@@ -43,16 +43,10 @@ class GBUBIEncoder:
         self._dim = dim
         self._node_dim = node_dim
         
-        self._base = torch.randn(node_dim - 1, dim)
-        self._rbf_base = torch.randn(dim, dim) * math.sqrt(variance)
+        self._subnet_base = torch.randn(node_dim-1, dim) * math.sqrt(variance)
+        self._node_base = torch.randn(node_dim, dim) * math.sqrt(variance)
+        self._discovery_base = torch.randn(1, dim) * math.sqrt(variance)
         self._bias = 2 * math.pi * torch.randn(1, dim)
-
-        self._discov_base = torch.randn(1, dim)
-
-
-        if bipolar:
-            self._base = torch.where(self._base < 0, torch.tensor(-1.0), torch.tensor(1.0))
-
         
 
     def __call__(self, nodes : Batch, state_index : Tensor) -> tuple[Tensor, Tensor]:
@@ -69,12 +63,12 @@ class GBUBIEncoder:
         #Setup Tensors
         is_subnet = nodes.x[:, 0] == 1
         node_features = 2 * nodes.x[~is_subnet].float() - 1 # n x f. Number of nodes x number of features. Do 2*x - 1 for hamming distance
-        encoded_features = node_features[:, 1:] @ self._base # n x d
+        encoded_features = torch.exp(1j * (node_features[:, 1:] @ self._subnet_base + self._bias[0])) # n x d
 
         #Build Subnets
         adj_matrix = to_dense_adj(nodes.edge_index).squeeze()
         subnet_node_adj_matrix = adj_matrix[is_subnet][:, ~is_subnet] # sub_nets x n
-        encoded_subnet = subnet_node_adj_matrix @ encoded_features #sub_nets x d
+        encoded_subnet = subnet_node_adj_matrix.to(torch.cfloat) @ encoded_features #sub_nets x d
         perm_encoded_subnet = permute_rows_by_shifts(encoded_subnet, torch.ones(encoded_subnet.shape[0], dtype=torch.int))
         
         #Build Subnet Connections
@@ -84,23 +78,20 @@ class GBUBIEncoder:
         subnet_batch_idx = nodes.batch[is_subnet]
         num_graphs = int(subnet_batch_idx.max()) + 1
         bundled = scatter_add(binded_subnets, subnet_batch_idx, dim=0, dim_size=num_graphs)  # graph x d
-
-        #Embedded devices
         expanded_graphs = bundled[nodes.batch[~is_subnet]]
-        embed_devices = (encoded_features + permute_rows_by_shifts(expanded_graphs, torch.ones(expanded_graphs.shape[0], dtype=torch.int))) / math.sqrt(2)
 
-        #RBF Kernal Activation
-        activated_devices = torch.exp(1j * (embed_devices @ self._rbf_base + self._bias))
-
-        #Bind feature of normalized order of discovery
+        # Add discovery feature (may need to try sin cosine encoding)
         device_batch = nodes.batch[~is_subnet]
         device_count = torch.bincount(device_batch, minlength=int(device_batch.max().item()) + 1)[device_batch]
         device_index = generate_counting_tensor(state_index)
         prop_devices : Tensor = (device_index + 1) / device_count
-        discov_feat = torch.exp(1j * (prop_devices.unsqueeze(dim=1) * self._discov_base))
-        devices = activated_devices * discov_feat
+        node_features = torch.cat([node_features[:, 1:]], prop_devices.view(-1, 1), dim=1)
+        
+        #Encode Device
+        encoded_nodes = torch.exp(1j * (node_features @ self._node_base)) # n x d #Do not need a bias as we already have it from the graphs earlier
+        encoded_nodes = encoded_nodes * expanded_graphs
 
-        return devices, nodes.batch[~is_subnet]
+        return encoded_nodes, nodes.batch[~is_subnet]
 
     def _bind_subnets_hadamard(self, 
         encoded_subnet: torch.Tensor,        # [N, D]
@@ -136,5 +127,5 @@ class GBUBIEncoder:
 
     def to(self, device : torch.device) -> None:
         self._base.to(device)
-        self._rbf_base.to(device)
+        self._subnet_base.to(device)
         self._bias.to(device)
