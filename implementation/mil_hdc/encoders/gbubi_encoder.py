@@ -94,7 +94,7 @@ class GBUBIEncoder:
 
         #Bind feature of normalized order of discovery
         device_batch = nodes.batch[~is_subnet]
-        device_count = torch.bincount(device_batch, minlength=int(device_batch.max().item()) + 1)
+        device_count = torch.bincount(device_batch, minlength=int(device_batch.max().item()) + 1)[device_batch]
         device_index = generate_counting_tensor(state_index)
         prop_devices : Tensor = (device_index + 1) / device_count
         discov_feat = torch.exp(1j * (prop_devices.unsqueeze(dim=1) * self._discov_base))
