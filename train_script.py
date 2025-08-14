@@ -9,7 +9,7 @@ from utils import Config
 from training_pipeline import train
 
 PROJECT_NAME = 'Graph Bundle Bind Encoder'
-MAIN_EXPERIMENT_NAME = 'gbubi_encoder_diff_order_of_activation_norm_normalize_offset'
+MAIN_EXPERIMENT_NAME = 'gbubi_encoder_diff_order_of_activation_faster'
 NUM_RUNS = 1
 OTHER_HPARAMS = { #Just the default params that may be different than the ones in the training file
     'wandb_project_name' : PROJECT_NAME,
@@ -20,7 +20,8 @@ OTHER_HPARAMS = { #Just the default params that may be different than the ones i
     'graph' : True,
     'gpu' : True,
     'bipolar': False,
-    'critic_lr': 3e-4,
+    'critic_lr': 3e-2,
+    'policy_lr': 3e-2,
     'sample_size' : 128,
     'variance' : 2,
     'hypervec_dim' : 1024,
