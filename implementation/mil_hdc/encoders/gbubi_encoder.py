@@ -85,7 +85,7 @@ class GBUBIEncoder:
         device_count = torch.bincount(device_batch, minlength=int(device_batch.max().item()) + 1)[device_batch]
         device_index = generate_counting_tensor(state_index)
         prop_devices : Tensor = (device_index + 1) / device_count
-        node_features = torch.cat([node_features[:, 1:]], prop_devices.view(-1, 1), dim=1)
+        node_features = torch.cat((node_features[:, 1:], prop_devices.view(-1, 1)), dim=1)
         
         #Encode Device
         encoded_nodes = torch.exp(1j * (node_features @ self._node_base)) # n x d #Do not need a bias as we already have it from the graphs earlier
