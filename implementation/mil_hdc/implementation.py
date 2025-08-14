@@ -230,7 +230,7 @@ class QFunctionTarget():
         self._tau = tau
         
     def __call__(self, *args, **kwds):
-        return torch.min(torch.stack(self._actual_q_function(*args, **kwds), dim=2), dim=2)[0]
+        return torch.min(torch.stack(self._target_q_function(*args, **kwds), dim=2), dim=2)[0]
     
     def update(self):
         """Will do polyak averaging to each model in the target"""

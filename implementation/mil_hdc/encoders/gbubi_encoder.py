@@ -82,7 +82,7 @@ class GBUBIEncoder:
         num_graphs = int(subnet_batch.max()) + 1
         bundled = scatter_add(binded_subnets, subnet_batch, dim=0, dim_size=num_graphs)  # graph x d
         num_connections = 2 * (torch.sum(adj_matrix[is_subnet][:, is_subnet]) + 1).view(-1, 1) #2 times for the symmetric. Include the 1 for the self loop
-        expanded_graphs = math.sqrt(self._dim) * F.normalize(bundled.view(-1, self._dim)[device_batch], ) #/ torch.sqrt(num_connections))[device_batch] #Normalize amount of connections
+        expanded_graphs = bundled.view(-1, self._dim)[device_batch] #/ torch.sqrt(num_connections))[device_batch] #Normalize amount of connections
 
         # Add discovery feature (may need to try sin cosine encoding)
         device_count = torch.bincount(device_batch, minlength=int(device_batch.max().item()) + 1)[device_batch]
