@@ -22,7 +22,7 @@ from torch_geometric.data import Batch
 from torch_geometric.utils import to_dense_adj
 from torch_scatter import scatter_add
 
-from ...model_utils import permute_rows_by_shifts
+from ...model_utils import permute_rows_by_shifts, generate_counting_tensor
 
 class GBUBIEncoder:
 
@@ -93,8 +93,10 @@ class GBUBIEncoder:
         activated_devices = torch.exp(1j * (embed_devices @ self._rbf_base + self._bias))
 
         #Bind feature of normalized order of discovery
-        num_devices = scatter_add(state_index, nodes.batch)
-        prop_devices : Tensor = state_index / num_devices[nodes.batch]
+        device_batch = nodes.batch[~is_subnet]
+        device_count = torch.bincount(device_batch, minlength=int(device_batch.max().item()) + 1)
+        device_index = generate_counting_tensor(state_index)
+        prop_devices : Tensor = (device_index + 1) / device_count
         discov_feat = torch.exp(1j * (prop_devices.unsqueeze(dim=1) * self._discov_base))
         devices = activated_devices * discov_feat
 
