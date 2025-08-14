@@ -126,6 +126,4 @@ class GBUBIEncoder:
 
 
     def to(self, device : torch.device) -> None:
-        self._base.to(device)
-        self._subnet_base.to(device)
-        self._bias.to(device)
+        None
