@@ -9,13 +9,13 @@ from utils import Config
 from training_pipeline import train
 
 PROJECT_NAME = 'Graph Bundle Bind Encoder'
-MAIN_EXPERIMENT_NAME = 'gbubi_encoder_diff_order_of_activation'
+MAIN_EXPERIMENT_NAME = 'gbubi_encoder_diff_order_of_activation_normaliz_subnet'
 NUM_RUNS = 1
 OTHER_HPARAMS = { #Just the default params that may be different than the ones in the training file
     'wandb_project_name' : PROJECT_NAME,
     'environment_info' : {'id' : 'NASimEmu-v0', 'emulate' : False, 'scenario_name' : '/home/ian/projects/hd_sac/NetworkAttackSimulator/nasim/scenarios/benchmark/medium.yaml', 'step_limit' : 100, 'augment_with_action' : True},
     'type_agent' : 'hdc_mil',
-    'wandb' : False,
+    'wandb' : True,
     'tensorboard' : False,
     'graph' : True,
     'gpu' : True,
