@@ -67,22 +67,25 @@ class GBUBIEncoder:
 
         #Build Subnets
         adj_matrix = to_dense_adj(nodes.edge_index).squeeze()
-        subnet_node_adj_matrix = adj_matrix[is_subnet][:, ~is_subnet] # sub_nets x n
-        num_devices_in_sub = torch.sum(subnet_node_adj_matrix, dim=1)
-        encoded_subnet = subnet_node_adj_matrix.to(torch.cfloat) @ encoded_features #/ torch.sqrt(num_devices_in_sub).view(-1, 1) #sub_nets x d (normalize amount of devices in a subnet)
+        subnet_node_adj = adj_matrix[is_subnet][:, ~is_subnet] # sub_nets x n
+        num_devices_in_sub = subnet_node_adj.sum(dim=1).view(-1, 1)
+        encoded_subnet = subnet_node_adj.to(torch.cfloat) @ encoded_features / num_devices_in_sub #sub_nets x d (normalize amount of devices in a subnet)
         perm_encoded_subnet = permute_rows_by_shifts(encoded_subnet, torch.ones(encoded_subnet.shape[0], dtype=torch.int))
         
         #Build Subnet Connections
-        adj_matrix[is_subnet][:, is_subnet]
-        binded_subnets = self._bind_subnets_hadamard(encoded_subnet, adj_matrix[is_subnet][:, is_subnet], perm_encoded_subnet) #sub_nets x d
+        subnet_subnet_adj = adj_matrix[is_subnet][:, is_subnet]
+        binded_subnets = self._bind_subnets_hadamard(encoded_subnet, subnet_subnet_adj, perm_encoded_subnet) #sub_nets x d
         
         #Build Graph
         subnet_batch = nodes.batch[is_subnet]
         device_batch = nodes.batch[~is_subnet]
+
         num_graphs = int(subnet_batch.max()) + 1
+        num_connections = 2 * (subnet_subnet_adj.sum(dim=1) + 1).view(-1, 1) #2x for the symmetric and + 1 for the self loop
+        binded_subnets = binded_subnets / num_connections #Normalize before the scatter add in order to make easier. Possible as normalizing term can be distributed
+
         bundled = scatter_add(binded_subnets, subnet_batch, dim=0, dim_size=num_graphs)  # graph x d
-        num_connections = 2 * (torch.sum(adj_matrix[is_subnet][:, is_subnet]) + 1).view(-1, 1) #2 times for the symmetric. Include the 1 for the self loop
-        expanded_graphs = bundled.view(-1, self._dim)[device_batch] #/ torch.sqrt(num_connections))[device_batch] #Normalize amount of connections
+        expanded_graphs = bundled[device_batch]
 
         # Add discovery feature (may need to try sin cosine encoding)
         device_count = torch.bincount(device_batch, minlength=int(device_batch.max().item()) + 1)[device_batch]
