@@ -75,10 +75,12 @@ class GBUBIEncoder:
         binded_subnets = self._bind_subnets_hadamard(encoded_subnet, adj_matrix[is_subnet][:, is_subnet], perm_encoded_subnet) #sub_nets x d
         
         #Build Graph
-        subnet_batch_idx = nodes.batch[is_subnet]
-        num_graphs = int(subnet_batch_idx.max()) + 1
-        bundled = scatter_add(binded_subnets, subnet_batch_idx, dim=0, dim_size=num_graphs)  # graph x d
-        expanded_graphs = bundled[nodes.batch[~is_subnet]]
+        subnet_batch = nodes.batch[is_subnet]
+        device_batch = nodes.batch[~is_subnet]
+        num_graphs = int(subnet_batch.max()) + 1
+        num_subnet_connect = 2 * torch.bincount(subnet_batch, minlength=int(subnet_batch.max().item()) + 1)
+        bundled = scatter_add(binded_subnets, subnet_batch, dim=0, dim_size=num_graphs)  # graph x d
+        expanded_graphs = (bundled.view(-1, self._dim) / torch.sqrt(num_subnet_connect).view(-1, 1))[device_batch]
 
         # Add discovery feature (may need to try sin cosine encoding)
         device_batch = nodes.batch[~is_subnet]
