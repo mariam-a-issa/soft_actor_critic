@@ -9,7 +9,7 @@ from utils import Config
 from training_pipeline import train
 
 PROJECT_NAME = 'Graph Bundle Bind Encoder'
-MAIN_EXPERIMENT_NAME = 'gbubi_encoder_random_actor_init'
+MAIN_EXPERIMENT_NAME = 'gbubi_encoder_magnitude_norm'
 NUM_RUNS = 1
 OTHER_HPARAMS = { #Just the default params that may be different than the ones in the training file
     'wandb_project_name' : PROJECT_NAME,
@@ -22,7 +22,7 @@ OTHER_HPARAMS = { #Just the default params that may be different than the ones i
     'bipolar': False,
     'critic_lr': 3e-5,
     'policy_lr': 3e-5,
-    'sample_size' : 128,
+    'sample_size' : 64,
     'hypervec_dim' : 1024,
     'tau': .1,
     'variance' : .75
