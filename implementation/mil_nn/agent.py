@@ -54,7 +54,7 @@ class MILNNAgent(Agent):
         #                                     pos_enc_dim=config.pos_enc_dim, 
         #                                     node_dim=node_dim)
 
-        self._q_embedding = HDCEmbedding(embed_dim=config.hypervec_dim, node_dim=node_dim)
+        self._q_embedding = HDCEmbedding(embed_dim=int(config.hypervec_dim / 2), node_dim=node_dim, variance=config.variance, pos_enc_dim=config.pos_enc_dim)
         self._target_q_embedding = deepcopy(self._q_embedding)
         self._policy_embedding = deepcopy(self._q_embedding)
 
@@ -175,7 +175,6 @@ class MILNNAgent(Agent):
         
     def target_param_update(self):
         self._q_func_target.update()
-        self.polyak_average(self._q_embedding.parameters(), self._target_q_embedding.parameters(), self._config.tau)
         
     def sample(self, state : Tensor | Data) -> Tensor:
         with torch.no_grad():

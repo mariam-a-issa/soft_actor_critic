@@ -122,9 +122,11 @@ class HDCEmbedding():
 
     def __init__(self,
                  embed_dim : int,
-                 node_dim : int) -> None:
+                 node_dim : int,
+                 pos_enc_dim : int,
+                 variance : float) -> None:
         
-        self._embed = RelEncoder(embed_dim, node_dim=node_dim, bipolar=False)
+        self._embed = GBUBIEncoder(dim = embed_dim, node_dim=node_dim, bipolar=False, variance=variance, pos_enc_dim=pos_enc_dim)
 
     def __call__(self, states : Batch, state_index : Tensor) -> tuple[Tensor, Tensor]:
         return self._embed(states, state_index)

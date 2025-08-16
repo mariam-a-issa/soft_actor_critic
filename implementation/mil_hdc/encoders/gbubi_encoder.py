@@ -23,6 +23,7 @@ from torch_geometric.utils import to_dense_adj
 from torch_scatter import scatter_add
 
 from ...model_utils import permute_rows_by_shifts, generate_counting_tensor, positional_encoding
+from utils import group_to_boundaries_torch
 
 class GBUBIEncoder:
 
@@ -62,6 +63,7 @@ class GBUBIEncoder:
         is_subnet = nodes.x[:, 0] == 1
 
         #Add positional features
+        state_index = group_to_boundaries_torch(nodes.batch[nodes.x[:, 0] != 1])
         index_vector = generate_counting_tensor(state_index)
         pos_enc = positional_encoding(index_vector, self._pos_enc_dim)
         node_features = 2 * nodes.x[~is_subnet].float() - 1
@@ -101,6 +103,11 @@ class GBUBIEncoder:
         
         #Encode Device
         encoded_nodes = encoded_features * permute_rows_by_shifts(expanded_graphs, torch.ones(expanded_graphs.shape[0], dtype=torch.int))
+
+        real_part = torch.real(encoded_nodes)
+        imag_part = torch.imag(encoded_nodes)
+
+        encoded_nodes = torch.cat((real_part, imag_part), dim=1)
 
         return encoded_nodes, nodes.batch[~is_subnet]
 

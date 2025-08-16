@@ -14,7 +14,7 @@ NUM_RUNS = 1
 OTHER_HPARAMS = { #Just the default params that may be different than the ones in the training file
     'wandb_project_name' : PROJECT_NAME,
     'environment_info' : {'id' : 'NASimEmu-v0', 'emulate' : False, 'scenario_name' : '/home/ian/projects/hd_sac/NetworkAttackSimulator/nasim/scenarios/benchmark/medium.yaml', 'step_limit' : 100, 'augment_with_action' : True},
-    'type_agent' : 'hdc_mil',
+    'type_agent' : 'nn_mil',
     'wandb' : True,
     'tensorboard' : False,
     'graph' : True,
@@ -22,10 +22,11 @@ OTHER_HPARAMS = { #Just the default params that may be different than the ones i
     'bipolar': False,
     'critic_lr': 3e-5,
     'policy_lr': 3e-5,
+    'alpha_lr' : 3e-5,
     'sample_size' : 64,
-    'hypervec_dim' : 1024,
-    'tau': .1,
-    'variance' : .75
+    'hypervec_dim' : 2048,
+    'tau': .005,
+    'variance' : 2
 }
 
 def train_hyper_param(name : str, values : list[float], seeds : list[int]):
