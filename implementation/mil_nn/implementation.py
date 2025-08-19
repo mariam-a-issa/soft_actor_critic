@@ -21,7 +21,7 @@ class Embedding(nn.Module):
                 node_dim : int) -> None:
         super().__init__()
         self._embeding = nn.Sequential(nn.Linear(node_dim + pos_enc_dim, embed_dim), nn.LeakyReLU())
-        self._inner = nn.Sequential(nn.Linear(embed_dim, embed_dim), nn.LeakyReLU()) #2 * for both the mean and the max
+        #self._inner = nn.Sequential(nn.Linear(embed_dim, embed_dim), nn.LeakyReLU()) #2 * for both the mean and the max
         self._pos_enc_dim = pos_enc_dim
         
     def forward(self, states : Tensor, state_index : Tensor) -> tuple[Tensor, Tensor]:
