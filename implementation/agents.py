@@ -633,7 +633,7 @@ class Agent(ABC):
             self._log_data(log_dicts, steps)
             
         if steps % self._target_update == 0:
-            self.target_param_update
+            self.target_param_update()
 
     def calc_grad_norm(self, parameters : Iterable[Tensor]) -> float:
         """Will calculate the norm of the gradient across the parameters
