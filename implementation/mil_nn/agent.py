@@ -54,15 +54,15 @@ class MILNNAgent(Agent):
         #                                     pos_enc_dim=config.pos_enc_dim, 
         #                                     node_dim=node_dim)
 
-        self._q_embedding = HDCEmbedding(embed_dim=int(config.hypervec_dim / 2), node_dim=node_dim, variance=config.variance, pos_enc_dim=config.pos_enc_dim)
+        self._q_embedding = HDCEmbedding(hidden_dim=config.hidden_dim, embed_dim=config.hypervec_dim, node_dim=node_dim, variance=config.variance, pos_enc_dim=config.pos_enc_dim)
         self._target_q_embedding = deepcopy(self._q_embedding)
-        self._policy_embedding = deepcopy(self._q_embedding)
+        self._policy_embedding = HDCEmbedding(hidden_dim=config.hidden_dim, embed_dim=config.hypervec_dim, node_dim=node_dim, variance=config.variance, pos_enc_dim=config.pos_enc_dim)
 
         config.hidden_dim *= 2 #The hidden size doubles after the concatination of the global embedding    
 
-        self._q_func = QFunction(embed_dim=config.hypervec_dim, hidden_dim=config.hidden_dim, action_dim=action_dim)
+        self._q_func = QFunction(embed_dim=int(config.hidden_dim / 2), hidden_dim=config.hidden_dim, action_dim=action_dim)
         self._q_func_target = QFunctionTarget(self._q_func, tau=config.tau)
-        self._policy = Actor(embed_dim=config.hypervec_dim, hidden_dim=config.hidden_dim, action_dim=action_dim)
+        self._policy = Actor(embed_dim=int(config.hidden_dim / 2), hidden_dim=config.hidden_dim, action_dim=action_dim)
         self._alpha = sac.Alpha(start=config.target_entropy_start, 
                             end=config.target_entropy_end, 
                             midpoint=config.target_entropy_midpoint, 
@@ -71,8 +71,8 @@ class MILNNAgent(Agent):
                             autotune=config.autotune, 
                             alpha_value=config.alpha_value)
 
-        self._optim_critic = torch.optim.Adam([*self._q_func.parameters()], lr=config.critic_lr)
-        self._optim_policy = torch.optim.Adam([*self._policy.parameters()], lr=config.policy_lr)
+        self._optim_critic = torch.optim.Adam([*self._q_embedding.parameters(), *self._q_func.parameters()], lr=config.critic_lr)
+        self._optim_policy = torch.optim.Adam([*self._policy.parameters(), *self._policy.parameters()], lr=config.policy_lr)
         self._optim_alpha = torch.optim.Adam([self._alpha._log_alpha], lr = config.alpha_lr)
 
         if config.graph:
@@ -175,6 +175,7 @@ class MILNNAgent(Agent):
         
     def target_param_update(self):
         self._q_func_target.update()
+        self.polyak_average(self._q_embedding.parameters(), self._target_q_embedding.parameters(), self._config.tau)
         
     def sample(self, state : Tensor | Data) -> Tensor:
         with torch.no_grad():

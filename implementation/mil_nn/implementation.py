@@ -118,21 +118,30 @@ class GraphEmbedding(nn.Module):
         return x[mask], batch_index[mask]
     
 
-class HDCEmbedding():
+class HDCEmbedding(nn.Module):
 
     def __init__(self,
                  embed_dim : int,
                  node_dim : int,
                  pos_enc_dim : int,
-                 variance : float) -> None:
-        
-        self._embed = GBUBIEncoder(dim = embed_dim, node_dim=node_dim, bipolar=False, variance=variance, pos_enc_dim=pos_enc_dim)
+                 variance : float, 
+                 hidden_dim : int) -> None:
+        super().__init__()
+        self._embed = GBUBIEncoder(dim = int(embed_dim / 2), node_dim=node_dim, bipolar=False, variance=variance, pos_enc_dim=pos_enc_dim)
+        self._layers = nn.Sequential(nn.Linear(embed_dim, int(embed_dim / 2)),
+                                     nn.ReLU(),
+                                     nn.Linear(int(embed_dim / 2), int(embed_dim / 4)),
+                                     nn.ReLU(),
+                                     nn.Linear(int(embed_dim / 4), hidden_dim),
+                                     nn.LeakyReLU())
 
-    def __call__(self, states : Batch, state_index : Tensor) -> tuple[Tensor, Tensor]:
-        return self._embed(states, state_index)
+    def forward(self, states : Batch, state_index : Tensor) -> tuple[Tensor, Tensor]:
+        x, batch = self._embed(states, state_index)
+        return self._layers(x), batch
         
     def to(self, device):
         self._embed.to(device)
+        self._layers.to(device)
  
 class Actor(nn.Module):
     
@@ -141,8 +150,8 @@ class Actor(nn.Module):
                  embed_dim : int,
                  action_dim : int):
         super().__init__()
-        self._device_select = nn.Sequential(nn.Linear(embed_dim, hidden_dim), nn.ReLU(), nn.Linear(hidden_dim, 1))
-        self._action_select = nn.Sequential(nn.Linear(embed_dim, hidden_dim), nn.ReLU(), nn.Linear(hidden_dim, action_dim))
+        self._device_select = nn.Linear(embed_dim, 1)
+        self._action_select = nn.Linear(embed_dim, action_dim)
         
     def forward(self, embed_states : Tensor, batch_index : Tensor) -> Tensor:
         """Will calculate the probs and log probs of taking a specific action on a device
@@ -202,8 +211,8 @@ class QModel(nn.Module):
                 hidden_dim : int,
                 action_dim : int):
         super().__init__()
-        self._device_q = nn.Sequential(nn.Linear(embed_dim, hidden_dim), nn.ReLU(), nn.Linear(hidden_dim, 2))
-        self._action_q = nn.Sequential(nn.Linear(embed_dim, hidden_dim), nn.ReLU(), nn.Linear(hidden_dim, action_dim))
+        self._device_q = nn.Sequential(nn.Linear(embed_dim, embed_dim), nn.ReLU(), nn.Linear(embed_dim, 2))
+        self._action_q = nn.Sequential(nn.Linear(embed_dim, embed_dim), nn.ReLU(), nn.Linear(embed_dim, action_dim))
         
     def forward(self, embed_state : Tensor, batch_index : Tensor, state_index : Tensor, description : str = None) -> Tensor:
         """Will calculate the Q value for each action on every device passed in
