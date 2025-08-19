@@ -21,7 +21,7 @@ class Embedding(nn.Module):
                 node_dim : int) -> None:
         super().__init__()
         self._embeding = nn.Sequential(nn.Linear(node_dim + pos_enc_dim, embed_dim), nn.LeakyReLU())
-        self._inner = nn.Sequential(nn.Linear(2 * embed_dim, embed_dim), nn.LeakyReLU()) #2 * for both the mean and the max
+        self._inner = nn.Sequential(nn.Linear(embed_dim, embed_dim), nn.LeakyReLU()) #2 * for both the mean and the max
         self._pos_enc_dim = pos_enc_dim
         
     def forward(self, states : Tensor, state_index : Tensor) -> tuple[Tensor, Tensor]:
@@ -43,7 +43,7 @@ class Embedding(nn.Module):
         #TODO Can do this with interleave
         batch_index = torch.cat([torch.zeros(state_index[i + 1] - state_index[i], dtype=int) + i for i in range(len(state_index) - 1)]) #Will create an index that can be used by torch_scatter to reduce corresponding elements
         #TODO switch to pointer version of segment as segment_coo is non deterministic
-        states_agg = torch.cat([segment_coo(states, batch_index, reduce='mean'), segment_coo(states, batch_index, reduce='max')], dim=1)
+        states_agg = segment_coo(states, batch_index, reduce='mean')
         states_agg = self._inner(states_agg)
         
         return torch.cat([states, states_agg[batch_index]], dim = 1), batch_index
