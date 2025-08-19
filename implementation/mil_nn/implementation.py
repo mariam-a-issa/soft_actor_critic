@@ -11,7 +11,7 @@ from torch_geometric.data import Data, Batch
 
 from utils import EPS, LearningLogger
 from .architecture import MultiMessagePassingWithAttention, MultiMessagePassing
-from ..model_utils import reshape, positional_encoding
+from ..model_utils import reshape, positional_encoding, permute_rows_by_shifts
 
 class Embedding(nn.Module):
     
@@ -43,10 +43,11 @@ class Embedding(nn.Module):
         #TODO Can do this with interleave
         batch_index = torch.cat([torch.zeros(state_index[i + 1] - state_index[i], dtype=int) + i for i in range(len(state_index) - 1)]) #Will create an index that can be used by torch_scatter to reduce corresponding elements
         #TODO switch to pointer version of segment as segment_coo is non deterministic
-        states_agg = segment_coo(states, batch_index, reduce='mean')[batch_index]
+        states_agg = segment_coo(states, batch_index, reduce='mean')
         #states_agg = self._inner(states_agg)
+        states_agg = permute_rows_by_shifts(states_agg, torch.ones(states_agg.shape[0], dtype=torch.int))[batch_index]
         
-        return states * states_agg, batch_index
+        return states + states_agg, batch_index
     
 class AttentionEmbedding(nn.Module):
     
