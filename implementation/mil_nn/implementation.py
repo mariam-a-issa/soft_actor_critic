@@ -44,7 +44,7 @@ class Embedding(nn.Module):
         batch_index = torch.cat([torch.zeros(state_index[i + 1] - state_index[i], dtype=int) + i for i in range(len(state_index) - 1)]) #Will create an index that can be used by torch_scatter to reduce corresponding elements
         #TODO switch to pointer version of segment as segment_coo is non deterministic
         states_agg = segment_coo(states, batch_index, reduce='mean')
-        states_agg = self._inner(states_agg)
+        #states_agg = self._inner(states_agg)
         
         return torch.cat([states, states_agg[batch_index]], dim = 1), batch_index
     
