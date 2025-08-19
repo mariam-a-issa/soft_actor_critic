@@ -9,7 +9,7 @@ from utils import Config
 from training_pipeline import train
 
 PROJECT_NAME = 'MIL NN Experiments'
-MAIN_EXPERIMENT_NAME = 'no_max_in_agg_agg_no_linear'
+MAIN_EXPERIMENT_NAME = 'no_max_in_agg_agg_no_linear_bind_agg'
 NUM_RUNS = 1
 OTHER_HPARAMS = { #Just the default params that may be different than the ones in the training file
     'wandb_project_name' : PROJECT_NAME,
@@ -17,7 +17,7 @@ OTHER_HPARAMS = { #Just the default params that may be different than the ones i
     'type_agent' : 'nn_mil',
     'wandb' : True,
     'tensorboard' : False,
-    'gpu_device' : 1
+    'gpu_device' : 0
 }
 
 def train_hyper_param(name : str, values : list[float], seeds : list[int]):
