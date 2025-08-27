@@ -9,7 +9,7 @@ from utils import Config
 from training_pipeline import train
 
 PROJECT_NAME = 'MIL NN Experiments'
-MAIN_EXPERIMENT_NAME = 'no_max_in_agg_agg_no_linear_bundle_permuted_agg'
+MAIN_EXPERIMENT_NAME = 'no_max_in_agg_agg_no_linear_bundle_permuted_agg_larger_hypervec_dim'
 NUM_RUNS = 1
 OTHER_HPARAMS = { #Just the default params that may be different than the ones in the training file
     'wandb_project_name' : PROJECT_NAME,
@@ -17,7 +17,7 @@ OTHER_HPARAMS = { #Just the default params that may be different than the ones i
     'type_agent' : 'nn_mil',
     'wandb' : True,
     'tensorboard' : False,
-    'gpu_device' : 0
+    'hypervec_dim' : 1024
 }
 
 def train_hyper_param(name : str, values : list[float], seeds : list[int]):
@@ -76,4 +76,4 @@ def _get_note() -> str:
 
 if __name__ == '__main__':
     os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8' #Needed since training will have to be deterministic. More info at https://docs.nvidia.com/cuda/cublas/index.html#cublasApi_reproducibility
-    train_hyper_param('policy_lr', [3e-4], [1, 2])
+    train_hyper_param('policy_lr', [3e-4], [0, 1, 2])
