@@ -23,7 +23,7 @@ class Embedding(nn.Module):
         self._embeding = nn.Sequential(nn.Linear(node_dim + pos_enc_dim, embed_dim), nn.LeakyReLU())
         #self._inner = nn.Sequential(nn.Linear(embed_dim, embed_dim), nn.LeakyReLU()) #2 * for both the mean and the max
         self._pos_enc_dim = pos_enc_dim
-        self.beta = nn.Parameter(tensor(.1 / math.sqrt(embed_dim)))
+        self.beta = nn.Parameter(torch.log(tensor(.1 / math.sqrt(embed_dim))))
         
     def forward(self, states : Tensor, state_index : Tensor) -> tuple[Tensor, Tensor]:
         """Will encode and then embed each set of devices in the list using postional encoding, embedding layer, and concatiaton of an aggregation
