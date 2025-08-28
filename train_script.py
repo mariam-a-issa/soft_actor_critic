@@ -9,13 +9,13 @@ from utils import Config
 from training_pipeline import train
 
 PROJECT_NAME = 'MIL NN Experiments'
-MAIN_EXPERIMENT_NAME = 'no_max_in_agg_agg_no_linear_bundle_permuted_agg_learn_agg_weight'
+MAIN_EXPERIMENT_NAME = 'no_max_in_agg_agg_no_linear_bundle_permuted_agg_learn_agg_weight_force_negative'
 NUM_RUNS = 1
 OTHER_HPARAMS = { #Just the default params that may be different than the ones in the training file
     'wandb_project_name' : PROJECT_NAME,
     'environment_info' : {'id' : 'NASimEmu-v0', 'emulate' : False, 'scenario_name' : '/home/ian/projects/hd_sac/NetworkAttackSimulator/nasim/scenarios/benchmark/medium.yaml', 'step_limit' : 100, 'augment_with_action' : True},
     'type_agent' : 'nn_mil',
-    'wandb' : True,
+    'wandb' : False,
     'tensorboard' : False,
     'gpu_device' : 1
 }

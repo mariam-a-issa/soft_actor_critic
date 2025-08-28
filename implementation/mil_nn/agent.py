@@ -167,8 +167,8 @@ class MILNNAgent(Agent):
             'Alpha Value' : self._alpha().item(),
             'Grad of Policy' : grad_policy,
             'Unclipped Grad of Q Func' : grad_q_func,
-            'Q Embedding Beta' : self._q_embedding.beta.data,
-            'Policy embedding Beta' : self._policy_embedding.beta.data
+            'Q Embedding Beta' : -torch.exp(self._q_embedding.beta).data,
+            'Policy embedding Beta' : -torch.exp(self._policy_embedding.beta).data
         }
         
     def target_param_update(self):
