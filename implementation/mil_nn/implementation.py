@@ -48,7 +48,7 @@ class Embedding(nn.Module):
         #states_agg = self._inner(states_agg)
         states_agg = permute_rows_by_shifts(states_agg, torch.ones(states_agg.shape[0], dtype=torch.int))[batch_index]
         
-        return states - torch.exp(self.beta) * states_agg, batch_index
+        return states + torch.exp(self.beta) * states_agg, batch_index
     
 class AttentionEmbedding(nn.Module):
     
