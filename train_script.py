@@ -9,7 +9,7 @@ from utils import Config
 from training_pipeline import train
 
 PROJECT_NAME = 'MIL NN Experiments'
-MAIN_EXPERIMENT_NAME = 'no_max_in_agg_agg_no_linear_bundle_permuted_agg_learn_agg_weight_force_positive'
+MAIN_EXPERIMENT_NAME = 'no_max_in_agg_agg_no_linear_bundle_permuted_agg_seperate_agg_embedding'
 NUM_RUNS = 1
 OTHER_HPARAMS = { #Just the default params that may be different than the ones in the training file
     'wandb_project_name' : PROJECT_NAME,

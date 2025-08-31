@@ -166,9 +166,7 @@ class MILNNAgent(Agent):
             'Entropy' : ent.item(),
             'Alpha Value' : self._alpha().item(),
             'Grad of Policy' : grad_policy,
-            'Unclipped Grad of Q Func' : grad_q_func,
-            'Q Embedding Beta' : torch.exp(self._q_embedding.beta).data,
-            'Policy embedding Beta' : torch.exp(self._policy_embedding.beta).data
+            'Unclipped Grad of Q Func' : grad_q_func
         }
         
     def target_param_update(self):

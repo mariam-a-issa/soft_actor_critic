@@ -21,9 +21,10 @@ class Embedding(nn.Module):
                 node_dim : int) -> None:
         super().__init__()
         self._embeding = nn.Sequential(nn.Linear(node_dim + pos_enc_dim, embed_dim), nn.LeakyReLU())
+        self._agg_embeding = nn.Sequential(nn.Linear(node_dim + pos_enc_dim, embed_dim), nn.LeakyReLU())
         #self._inner = nn.Sequential(nn.Linear(embed_dim, embed_dim), nn.LeakyReLU()) #2 * for both the mean and the max
         self._pos_enc_dim = pos_enc_dim
-        self.beta = nn.Parameter(torch.log(tensor(.1 / math.sqrt(embed_dim))))
+        #self.beta = nn.Parameter(torch.log(tensor(.1 / math.sqrt(embed_dim))))
         
     def forward(self, states : Tensor, state_index : Tensor) -> tuple[Tensor, Tensor]:
         """Will encode and then embed each set of devices in the list using postional encoding, embedding layer, and concatiaton of an aggregation
@@ -38,17 +39,18 @@ class Embedding(nn.Module):
 
         pos_enc = positional_encoding(pos_index, self._pos_enc_dim)
         
-        states = torch.cat((states, pos_enc), dim = 1)
-        states = self._embeding(states)
+        states_pre = torch.cat((states, pos_enc), dim = 1)
+        states = self._embeding(states_pre)
+        states_agg = self._agg_embeding(states_pre)
         
         #TODO Can do this with interleave
         batch_index = torch.cat([torch.zeros(state_index[i + 1] - state_index[i], dtype=int) + i for i in range(len(state_index) - 1)]) #Will create an index that can be used by torch_scatter to reduce corresponding elements
         #TODO switch to pointer version of segment as segment_coo is non deterministic
-        states_agg = segment_coo(states, batch_index, reduce='mean')
+        states_agg = segment_coo(states_agg, batch_index, reduce='mean')[batch_index]
         #states_agg = self._inner(states_agg)
-        states_agg = permute_rows_by_shifts(states_agg, torch.ones(states_agg.shape[0], dtype=torch.int))[batch_index]
+        #states_agg = permute_rows_by_shifts(states_agg, torch.ones(states_agg.shape[0], dtype=torch.int))[batch_index]
         
-        return states + torch.exp(self.beta) * states_agg, batch_index
+        return states + states_agg, batch_index
     
 class AttentionEmbedding(nn.Module):
     
