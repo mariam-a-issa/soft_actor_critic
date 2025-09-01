@@ -44,21 +44,21 @@ class MILNNAgent(Agent):
                                                node_dim=node_dim, 
                                                message_passes=config.messages_passes)
         else:
-            self._q_embedding = Embedding(embed_dim=config.hidden_dim, 
+            self._q_embedding = Embedding(embed_dim=config.hypervec_dim, 
                                           pos_enc_dim=config.pos_enc_dim, 
                                           node_dim=node_dim)
             
             self._target_q_embedding = deepcopy(self._q_embedding)
 
-            self._policy_embedding = Embedding(embed_dim=config.hidden_dim, 
+            self._policy_embedding = Embedding(embed_dim=config.hypervec_dim, 
                                             pos_enc_dim=config.pos_enc_dim, 
                                             node_dim=node_dim)
 
         #config.hidden_dim *= 2 #The hidden size doubles after the concatination of the global embedding    
 
-        self._q_func = QFunction(embed_dim=config.hidden_dim, action_dim=action_dim)
+        self._q_func = QFunction(hyper_dim=config.hypervec_dim, embed_dim=config.hidden_dim, action_dim=action_dim)
         self._q_func_target = QFunctionTarget(self._q_func, tau=config.tau)
-        self._policy = Actor(embed_dim=config.hidden_dim, action_dim=action_dim)
+        self._policy = Actor(embed_dim=config.hypervec_dim, action_dim=action_dim)
         self._alpha = sac.Alpha(start=config.target_entropy_start, 
                             end=config.target_entropy_end, 
                             midpoint=config.target_entropy_midpoint, 

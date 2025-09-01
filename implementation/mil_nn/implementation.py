@@ -185,10 +185,11 @@ class Actor(nn.Module):
 class QModel(nn.Module):
     def __init__(self,
                 embed_dim : int,
+                hyper_dim : int,
                 action_dim : int):
         super().__init__()
-        self._device_q = nn.Sequential(nn.Linear(embed_dim, embed_dim), nn.ReLU(), nn.Linear(embed_dim, 2))
-        self._action_q = nn.Sequential(nn.Linear(embed_dim, embed_dim), nn.ReLU(), nn.Linear(embed_dim, action_dim))
+        self._device_q = nn.Sequential(nn.Linear(hyper_dim, embed_dim), nn.ReLU(), nn.Linear(embed_dim, 2))
+        self._action_q = nn.Sequential(nn.Linear(hyper_dim, embed_dim), nn.ReLU(), nn.Linear(embed_dim, action_dim))
         
     def forward(self, embed_state : Tensor, batch_index : Tensor, state_index : Tensor, description : str = None) -> Tensor:
         """Will calculate the Q value for each action on every device passed in
@@ -228,10 +229,11 @@ class QFunction(nn.Module):
     
     def __init__(self, 
                  embed_dim : int,
+                 hyper_dim : int, 
                  action_dim : int):
         super().__init__()
-        self._q1 = QModel(embed_dim, action_dim)
-        self._q2 = QModel(embed_dim, action_dim)
+        self._q1 = QModel(embed_dim, hyper_dim, action_dim)
+        self._q2 = QModel(embed_dim, hyper_dim, action_dim)
         
     def forward(self, embed_state : Tensor, batch_index : Tensor, state_index : Tensor) -> tuple[Tensor, Tensor]:
         q1 = self._q1(embed_state, batch_index, state_index, description='Q1')
