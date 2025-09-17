@@ -11,7 +11,7 @@ from torch_geometric.data import Data, Batch
 
 from utils import EPS, LearningLogger
 from .architecture import MultiMessagePassingWithAttention, MultiMessagePassing
-from ..model_utils import reshape, positional_encoding, permute_rows_by_shifts
+from ..model_utils import reshape, positional_encoding, permute_rows_by_shifts, generate_counting_tensor, generate_batch_index
 
 class Embedding(nn.Module):
     
@@ -20,11 +20,22 @@ class Embedding(nn.Module):
                 pos_enc_dim : int, #This needs to be even
                 node_dim : int) -> None:
         super().__init__()
-        self._embeding = nn.Sequential(nn.Linear(node_dim + pos_enc_dim, embed_dim), nn.LeakyReLU())
-        self._agg_embeding = nn.Sequential(nn.Linear(node_dim + pos_enc_dim, embed_dim), nn.LeakyReLU())
+        #self._embeding = nn.Sequential(nn.Linear(node_dim + pos_enc_dim, embed_dim), nn.LeakyReLU())
+        #self._agg_embeding = nn.Sequential(nn.Linear(node_dim + pos_enc_dim, embed_dim), nn.LeakyReLU())
         #self._inner = nn.Sequential(nn.Linear(embed_dim, embed_dim), nn.LeakyReLU()) #2 * for both the mean and the max
         self._pos_enc_dim = pos_enc_dim
         #self.beta = nn.Parameter(torch.log(tensor(.1 / math.sqrt(embed_dim))))
+
+        if embed_dim % 2 == 0:
+            embed_dim = embed_dim // 2
+        else:
+            raise ValueError('Embed Dim is not divisible by 2')
+
+        self._s_hdvec = torch.randn(node_dim + pos_enc_dim, embed_dim, dtype=torch.float32) 
+        self._bias = 2 * math.pi * torch.rand(embed_dim, dtype=torch.float32)
+        self._node_dim = node_dim
+        self._dim = embed_dim
+        self._pos_enc_dim = pos_enc_dim
         
     def forward(self, states : Tensor, state_index : Tensor) -> tuple[Tensor, Tensor]:
         """Will encode and then embed each set of devices in the list using postional encoding, embedding layer, and concatiaton of an aggregation
@@ -34,23 +45,30 @@ class Embedding(nn.Module):
             return tensor of same of shape mx2*emb dim
                    batch index where each element corresponds to a device in states and represents what element of the batch it is
         """
-        #TODO there is a way to do this
-        pos_index = torch.cat([torch.arange(start = 1, end = state_index[i + 1] - state_index[i] + 1) for i in range(len(state_index) - 1)])
+        states.clamp_(max=2)
+        index_vector = generate_counting_tensor(state_index)
+        batch_index = generate_batch_index(state_index)
 
-        pos_enc = positional_encoding(pos_index, self._pos_enc_dim)
+        #Encode the nodes
+        pos_enc = positional_encoding(index_vector, self._pos_enc_dim)
+        nodes = torch.cat((states, pos_enc), dim = 1)
+        encoded_nodes = torch.exp(nodes @ self._s_hdvec + self._bias)
+        agg_nodes = permute_rows_by_shifts(encoded_nodes, torch.ones(encoded_nodes.shape[0], dtype=torch.int64))
         
-        states_pre = torch.cat((states, pos_enc), dim = 1)
-        states = self._embeding(states_pre)
-        states_agg = self._agg_embeding(states_pre)
+        #Bundle agg nodes together
+        grouped_products : Tensor = torch.zeros((batch_index.max() + 1, encoded_nodes.shape[1]), dtype=encoded_nodes.dtype)
+        grouped_products.index_add_(0, batch_index, agg_nodes)
+        grouped_products = F.normalize(grouped_products, p=2, dim=1)
+        grouped_products = grouped_products[batch_index]
         
-        #TODO Can do this with interleave
-        batch_index = torch.cat([torch.zeros(state_index[i + 1] - state_index[i], dtype=int) + i for i in range(len(state_index) - 1)]) #Will create an index that can be used by torch_scatter to reduce corresponding elements
-        #TODO switch to pointer version of segment as segment_coo is non deterministic
-        states_agg = segment_coo(states_agg, batch_index, reduce='mean')[batch_index]
-        #states_agg = self._inner(states_agg)
-        #states_agg = permute_rows_by_shifts(states_agg, torch.ones(states_agg.shape[0], dtype=torch.int))[batch_index]
+        #Bind total state and each node and normalize
+        final_encode = encoded_nodes * grouped_products
         
-        return states * states_agg, batch_index
+        phasors = torch.real(torch.log(final_encode) / 1j)
+        real_encode = torch.cat((torch.cos(phasors), torch.sin(phasors)), dim=1) / math.sqrt(self._dim)
+
+        return real_encode, batch_index
+
     
 class AttentionEmbedding(nn.Module):
     
@@ -185,10 +203,11 @@ class Actor(nn.Module):
 class QModel(nn.Module):
     def __init__(self,
                 embed_dim : int,
+                hyper_dim : int,
                 action_dim : int):
         super().__init__()
-        self._device_q = nn.Sequential(nn.Linear(embed_dim, embed_dim), nn.ReLU(), nn.Linear(embed_dim, 2))
-        self._action_q = nn.Sequential(nn.Linear(embed_dim, embed_dim), nn.ReLU(), nn.Linear(embed_dim, action_dim))
+        self._device_q = nn.Sequential(nn.Linear(hyper_dim, embed_dim), nn.ReLU(), nn.Linear(embed_dim, 2))
+        self._action_q = nn.Sequential(nn.Linear(hyper_dim, embed_dim), nn.ReLU(), nn.Linear(embed_dim, action_dim))
         
     def forward(self, embed_state : Tensor, batch_index : Tensor, state_index : Tensor, description : str = None) -> Tensor:
         """Will calculate the Q value for each action on every device passed in
@@ -228,10 +247,11 @@ class QFunction(nn.Module):
     
     def __init__(self, 
                  embed_dim : int,
+                 hyper_dim : int,
                  action_dim : int):
         super().__init__()
-        self._q1 = QModel(embed_dim, action_dim)
-        self._q2 = QModel(embed_dim, action_dim)
+        self._q1 = QModel(embed_dim, hyper_dim, action_dim)
+        self._q2 = QModel(embed_dim, hyper_dim, action_dim)
         
     def forward(self, embed_state : Tensor, batch_index : Tensor, state_index : Tensor) -> tuple[Tensor, Tensor]:
         q1 = self._q1(embed_state, batch_index, state_index, description='Q1')
