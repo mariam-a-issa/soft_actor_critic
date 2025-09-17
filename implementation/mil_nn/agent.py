@@ -144,14 +144,14 @@ class MILNNAgent(Agent):
         self._optim_critic.zero_grad()
         critic_loss.backward()
         
-        grad_policy = self.calc_grad_norm([*self._policy_embedding.parameters(), *self._policy.parameters()])
-        grad_q_func = self.calc_grad_norm([*self._q_embedding.parameters(), *self._q_func.parameters()])
+        grad_policy = self.calc_grad_norm([*self._policy.parameters()])
+        grad_q_func = self.calc_grad_norm([*self._q_func.parameters()])
 
         self._optim_alpha.zero_grad()
         alpha_loss.backward()
         
         if self._config.grad_clip:
-            utils.clip_grad_norm_([*self._q_embedding.parameters(), *self._q_func.parameters()], self._config.grad_clip)
+            utils.clip_grad_norm_([*self._q_func.parameters()], self._config.grad_clip)
         
         self._optim_policy.step()
         self._optim_critic.step()
