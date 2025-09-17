@@ -22,6 +22,20 @@ class Embedding(nn.Module):
         super().__init__()
         self._embeding = nn.Sequential(nn.Linear(node_dim + pos_enc_dim, embed_dim), nn.LeakyReLU())
         self._agg_embeding = nn.Sequential(nn.Linear(node_dim + pos_enc_dim, embed_dim), nn.LeakyReLU())
+
+        random_dev = 2 * torch.rand(node_dim + pos_enc_dim, embed_dim) - 1
+        random_agg = 2 * torch.rand(node_dim + pos_enc_dim, embed_dim) - 1
+
+        random_bias_dev =  2 * torch.rand(embed_dim) - 1
+        random_bias_agg = 2 * torch.rand(embed_dim) - 1
+
+        with torch.no_grad():
+            self._embeding[0].weight.copy_(random_dev.T)
+            self._agg_embeding[0].weight.copy_(random_agg.T)
+
+            self._embeding[0].bias.copy_(random_bias_dev)
+            self._agg_embeding[0].bias.copy_(random_bias_agg)
+
         #self._inner = nn.Sequential(nn.Linear(embed_dim, embed_dim), nn.LeakyReLU()) #2 * for both the mean and the max
         self._pos_enc_dim = pos_enc_dim
         #self.beta = nn.Parameter(torch.log(tensor(.1 / math.sqrt(embed_dim))))
@@ -34,7 +48,9 @@ class Embedding(nn.Module):
             return tensor of same of shape mx2*emb dim
                    batch index where each element corresponds to a device in states and represents what element of the batch it is
         """
-        #TODO there is a way to do this
+
+        states = 2 * states.clamp_(min=-1, max=1) - 1 #map from 0, 1 to -1, 1 values. Note one of the values may be 100 or 0 so we clamp.
+
         pos_index = torch.cat([torch.arange(start = 1, end = state_index[i + 1] - state_index[i] + 1) for i in range(len(state_index) - 1)])
 
         pos_enc = positional_encoding(pos_index, self._pos_enc_dim)
@@ -50,7 +66,7 @@ class Embedding(nn.Module):
         #states_agg = self._inner(states_agg)
         #states_agg = permute_rows_by_shifts(states_agg, torch.ones(states_agg.shape[0], dtype=torch.int))[batch_index]
         
-        return states * states_agg, batch_index
+        return states + states_agg, batch_index
     
 class AttentionEmbedding(nn.Module):
     
