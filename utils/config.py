@@ -72,6 +72,9 @@ class Config:
     
     explore_steps: int = 0
     """Number of initial random exploration steps before learning begins"""
+
+    lambd : float = 1
+    """L2 Regularization weight"""
     
     grad_clip: Optional[int] = 5
     """Maximum gradient norm for clipping critic network"""

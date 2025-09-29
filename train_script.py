@@ -9,7 +9,7 @@ from utils import Config
 from training_pipeline import train
 
 PROJECT_NAME = 'MIL NN Experiments'
-MAIN_EXPERIMENT_NAME = 'agg_no_max_no_extra_layer_seperate_layer_bind_normalize_random_encoder'
+MAIN_EXPERIMENT_NAME = 'bipolar_hypervector_random_projection_normalize_device_agg_seperate'
 NUM_RUNS = 1
 OTHER_HPARAMS = { #Just the default params that may be different than the ones in the training file
     'wandb_project_name' : PROJECT_NAME,

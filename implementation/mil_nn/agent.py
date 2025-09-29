@@ -44,21 +44,21 @@ class MILNNAgent(Agent):
                                                node_dim=node_dim, 
                                                message_passes=config.messages_passes)
         else:
-            self._q_embedding = Embedding(embed_dim=config.hidden_dim, 
+            self._q_embedding = Embedding(embed_dim=config.hypervec_dim, 
                                           pos_enc_dim=config.pos_enc_dim, 
                                           node_dim=node_dim)
             
             self._target_q_embedding = deepcopy(self._q_embedding)
 
-            self._policy_embedding = Embedding(embed_dim=config.hidden_dim, 
+            self._policy_embedding = Embedding(embed_dim=config.hypervec_dim, 
                                             pos_enc_dim=config.pos_enc_dim, 
                                             node_dim=node_dim)
 
         #config.hidden_dim *= 2 #The hidden size doubles after the concatination of the global embedding    
 
-        self._q_func = QFunction(embed_dim=config.hidden_dim, action_dim=action_dim)
+        self._q_func = QFunction(embed_dim=config.hypervec_dim, action_dim=action_dim)
         self._q_func_target = QFunctionTarget(self._q_func, tau=config.tau)
-        self._policy = Actor(embed_dim=config.hidden_dim, action_dim=action_dim)
+        self._policy = Actor(embed_dim=config.hypervec_dim, action_dim=action_dim)
         self._alpha = sac.Alpha(start=config.target_entropy_start, 
                             end=config.target_entropy_end, 
                             midpoint=config.target_entropy_midpoint, 
@@ -128,6 +128,7 @@ class MILNNAgent(Agent):
                                          self._alpha(),
                                          self._config.discount,
                                          trans.done)
+        
         alpha_loss = sac.alpha_loss(cur_prob,
                                     cur_log_prob,
                                     self._alpha(),
@@ -139,8 +140,8 @@ class MILNNAgent(Agent):
         self._optim_policy.zero_grad()
         policy_loss.backward()
         
-        critic_loss = q1_loss + q2_loss
-        
+        critic_loss = q1_loss + q2_loss + self._config.lambd * (self._q_func.weights() ** 2).sum()
+
         self._optim_critic.zero_grad()
         critic_loss.backward()
         
@@ -150,8 +151,8 @@ class MILNNAgent(Agent):
         self._optim_alpha.zero_grad()
         alpha_loss.backward()
         
-        if self._config.grad_clip:
-            utils.clip_grad_norm_([*self._q_func.parameters()], self._config.grad_clip)
+        #if self._config.grad_clip:
+        #    utils.clip_grad_norm_([*self._q_func.parameters()], self._config.grad_clip)
         
         self._optim_policy.step()
         self._optim_critic.step()

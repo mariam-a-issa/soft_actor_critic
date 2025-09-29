@@ -11,7 +11,7 @@ from torch_geometric.data import Data, Batch
 
 from utils import EPS, LearningLogger
 from .architecture import MultiMessagePassingWithAttention, MultiMessagePassing
-from ..model_utils import reshape, positional_encoding, permute_rows_by_shifts
+from ..model_utils import reshape, positional_encoding, permute_rows_by_shifts, generate_batch_index
 
 class Embedding(nn.Module):
     
@@ -20,26 +20,12 @@ class Embedding(nn.Module):
                 pos_enc_dim : int, #This needs to be even
                 node_dim : int) -> None:
         super().__init__()
-        self._embeding = nn.Sequential(nn.Linear(node_dim + pos_enc_dim, embed_dim), nn.LeakyReLU())
-        self._agg_embeding = nn.Sequential(nn.Linear(node_dim + pos_enc_dim, embed_dim), nn.LeakyReLU())
 
-        random_dev = 2 * torch.rand(node_dim + pos_enc_dim, embed_dim) - 1
-        random_agg = 2 * torch.rand(node_dim + pos_enc_dim, embed_dim) - 1
+        self._embeding =  torch.sign(2 * torch.rand(node_dim, embed_dim) - 1) # f x d
+        self._agg_embeding = torch.sign(2 * torch.rand(node_dim, embed_dim) - 1)
+        self._pos = torch.sign(2 * torch.rand(embed_dim) - 1)
+        self._agg_pos = torch.sign(2 * torch.rand(embed_dim) - 1)
 
-        random_bias_dev =  2 * torch.rand(embed_dim) - 1
-        random_bias_agg = 2 * torch.rand(embed_dim) - 1
-
-        with torch.no_grad():
-            self._embeding[0].weight.copy_(random_dev.T)
-            self._agg_embeding[0].weight.copy_(random_agg.T)
-
-            self._embeding[0].bias.copy_(random_bias_dev)
-            self._agg_embeding[0].bias.copy_(random_bias_agg)
-
-        #self._inner = nn.Sequential(nn.Linear(embed_dim, embed_dim), nn.LeakyReLU()) #2 * for both the mean and the max
-        self._pos_enc_dim = pos_enc_dim
-        #self.beta = nn.Parameter(torch.log(tensor(.1 / math.sqrt(embed_dim))))
-        
     def forward(self, states : Tensor, state_index : Tensor) -> tuple[Tensor, Tensor]:
         """Will encode and then embed each set of devices in the list using postional encoding, embedding layer, and concatiaton of an aggregation
             states: All of the device states in a flattened mxn where m is the total numner of devices and n 2 x embd dim
@@ -49,22 +35,25 @@ class Embedding(nn.Module):
                    batch index where each element corresponds to a device in states and represents what element of the batch it is
         """
 
-        states = 2 * states.clamp_(min=-1, max=1) - 1 #map from 0, 1 to -1, 1 values. Note one of the values may be 100 or 0 so we clamp.
+        states_pre = 2 * states.clamp_(min=-1, max=1) - 1 #map from 0, 1 to -1, 1 values. Note one of the values may be 100 or 0 so we clamp. n x f
+        batch_index = generate_batch_index(state_index)
 
-        pos_index = torch.cat([torch.arange(start = 1, end = state_index[i + 1] - state_index[i] + 1) for i in range(len(state_index) - 1)])
+        states = states_pre @ self._embeding 
+        states_agg = states_pre @ self._agg_embeding
+        
+        #Reverese positional encoding. Newest devices getting less permutations
+        size = state_index[1:] - state_index[:-1]
+        sizes = torch.repeat_interleave(size, size)
+        reverse_positions = sizes - 1 - batch_index
 
-        pos_enc = positional_encoding(pos_index, self._pos_enc_dim)
+        pos_hv = permute_rows_by_shifts(self._pos.unsqueeze(dim=0).expand(states.shape[0], -1), reverse_positions.to(torch.int))
+        agg_pos_hv = permute_rows_by_shifts(self._agg_pos.unsqueeze(dim=0).expand(states.shape[0], -1), reverse_positions.to(torch.int))
+
+        states = states * pos_hv
+        states_agg = states_agg * agg_pos_hv
         
-        states_pre = torch.cat((states, pos_enc), dim = 1)
-        states = self._embeding(states_pre)
-        states_agg = self._agg_embeding(states_pre)
-        
-        #TODO Can do this with interleave
-        batch_index = torch.cat([torch.zeros(state_index[i + 1] - state_index[i], dtype=int) + i for i in range(len(state_index) - 1)]) #Will create an index that can be used by torch_scatter to reduce corresponding elements
-        #TODO switch to pointer version of segment as segment_coo is non deterministic
-        states_agg = F.normalize(segment_coo(states_agg, batch_index, reduce='sum'), p=2, dim=1)[batch_index]
-        #states_agg = self._inner(states_agg)
-        #states_agg = permute_rows_by_shifts(states_agg, torch.ones(states_agg.shape[0], dtype=torch.int))[batch_index]
+        states = F.normalize(states, p=2, dim=1)
+        states_agg = F.normalize(segment_coo(states_agg, batch_index, reduce='mean'), p=2, dim=1)[batch_index]
         
         return states * states_agg, batch_index
     
@@ -203,8 +192,8 @@ class QModel(nn.Module):
                 embed_dim : int,
                 action_dim : int):
         super().__init__()
-        self._device_q = nn.Sequential(nn.Linear(embed_dim, embed_dim), nn.ReLU(), nn.Linear(embed_dim, 2))
-        self._action_q = nn.Sequential(nn.Linear(embed_dim, embed_dim), nn.ReLU(), nn.Linear(embed_dim, action_dim))
+        #self._device_q =nn.Linear(embed_dim, embed_dim)
+        self._action_q = nn.Linear(embed_dim, action_dim)
         
     def forward(self, embed_state : Tensor, batch_index : Tensor, state_index : Tensor, description : str = None) -> Tensor:
         """Will calculate the Q value for each action on every device passed in
@@ -221,10 +210,10 @@ class QModel(nn.Module):
            return: A bx(max_d * a) tensor where each element corresponds to the Q value of that specific device with zeroed out 
         """
         
-        device_q : Tensor = self._device_q(embed_state) # bmx1 first index choose device second index choose other devicess
+        #device_q : Tensor = self._device_q(embed_state) # bmx1 first index choose device second index choose other devicess
         action_q : Tensor = self._action_q(embed_state) # bmxa
         
-        action_q += device_q[:,0].view(-1,1)
+        #action_q += device_q[:,0].view(-1,1)
         
         #scaler = torch.tensor([state_index[i + 1] - state_index[i] for i in range(len(state_index) - 1)])[batch_index]
         
@@ -254,6 +243,9 @@ class QFunction(nn.Module):
         q2 = self._q2(embed_state, batch_index, state_index, description='Q2')
         
         return q1, q2
+    
+    def weights(self):
+        return torch.cat((self._q1._action_q.weight, self._q2._action_q.weight), dim=0)
     
 class QFunctionTarget():
     
