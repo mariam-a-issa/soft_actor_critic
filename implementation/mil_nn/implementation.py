@@ -53,7 +53,7 @@ class Embedding(nn.Module):
         states_agg = states_agg * agg_pos_hv
         
         states = F.normalize(states, p=2, dim=1)
-        states_agg = F.normalize(segment_coo(states_agg, batch_index, reduce='mean'), p=2, dim=1)[batch_index]
+        states_agg = F.normalize(segment_coo(states_agg, batch_index, reduce='sum'), p=2, dim=1)[batch_index]
         
         return states * states_agg, batch_index
     
