@@ -12,19 +12,28 @@ import gym
 from implementation import Agent
 from utils import Config
 
-def clean_state(s : NDArray | tuple, graph : bool) -> Tensor | Data:
+def clean_state(s : NDArray | tuple, graph : bool, env : gym.Env) -> Tensor | Data:
     """Will clean up the state and return it.
         Many of the NASimEmu agents do not use the additonal information row (data about whether an action was successful)"""
+    address_size = env.env.env.scenario.address_space_bounds[0] + env.env.env.scenario.address_space_bounds[1]
     if graph:
-        return Data(tensor(s[0], dtype=float32), tensor(s[1], dtype=int64)) #0 is node feats and 1 is edge_index. Need to have the data types so that they match up with the rest of the model
-    return tensor(s[:-1])
+        feats = s[0]
+    else:
+        feats = s
+    mask = np.ones(feats.shape[1], dtype=bool)
+    mask[1 : address_size + 1] = False  # exclude columns 1 through n
+    if graph:
+        return Data(tensor(s[0][:, mask], dtype=float32), tensor(s[1], dtype=int64)) #0 is node feats and 1 is edge_index. Need to have the data types so that they match up with the rest of the model
+    #return tensor(s[:-1])
+    return tensor(s[:-1, mask])
 
 
-def get_action(state : Tensor, env : gym.Env, agent : Agent, graph : bool, explore_steps : int, steps : int) -> tuple[tuple[tuple[int, int], int], Tensor]:
+def get_action(state : NDArray, env : gym.Env, agent : Agent, graph : bool, explore_steps : int, steps : int) -> tuple[tuple[tuple[int, int], int], Tensor]:
     """Will get the action depending on exploring or doing the current policy
         Will return the NASimEmu action and the integer action as a Tensor"""
+    cleaned_state = clean_state(state, graph, env)
     if explore_steps <= steps:
-        action = agent.sample(state) 
+        action = agent.sample(cleaned_state) 
         return convert_int_action(action.data, env, state, graph), action
     else:
         action = random.randint(0, env.action_space.n-1) #Fix so that it takes into account padded actions depending on size of state
@@ -51,7 +60,9 @@ def get_train_env_info(env : gym.Env, config : Config) -> tuple[int, int, gym.En
         env = gym.make(**config.environment_info)
         env.reset()
         state_space += 1 # +1 feature (node/subnet) from NASimEmu Agents and seems to be used only when using graphs
-
+        
+    state_space -= env.env.env.scenario.address_space_bounds[0] + env.env.env.scenario.address_space_bounds[1]
+    
     return action_space, state_space, env   
 
 def setup_env(config : Config) -> torch.device:
