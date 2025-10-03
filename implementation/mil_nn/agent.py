@@ -67,8 +67,8 @@ class MILNNAgent(Agent):
                             autotune=config.autotune, 
                             alpha_value=config.alpha_value)
 
-        self._optim_critic = torch.optim.Adam([*self._q_func.parameters()], lr=config.critic_lr)
-        self._optim_policy = torch.optim.Adam([*self._policy.parameters()], lr=config.policy_lr)
+        self._optim_critic = torch.optim.Adam([*self._q_embedding.parameters() , *self._q_func.parameters()], lr=config.critic_lr)
+        self._optim_policy = torch.optim.Adam([*self._policy_embedding.parameters(), *self._policy.parameters()], lr=config.policy_lr)
         self._optim_alpha = torch.optim.Adam([self._alpha._log_alpha], lr = config.alpha_lr)
 
         if config.graph:
