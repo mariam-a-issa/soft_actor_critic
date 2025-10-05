@@ -57,6 +57,20 @@ class Embedding(nn.Module):
         
         return states * states_agg, batch_index
     
+    def weights(self) -> Tensor:
+        """Will return all of the weights of the embedding module
+
+        Returns:
+            Tensor: Embedding module weights
+        """
+
+        return torch.cat((
+            self._embeding[0].weight.flatten(),
+            self._agg_embeding[0].weight.flatten(),
+            self._pos,
+            self._agg_pos
+        ), dim = 0)
+    
 class AttentionEmbedding(nn.Module):
     
     def __init__(self,

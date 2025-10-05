@@ -140,7 +140,7 @@ class MILNNAgent(Agent):
         self._optim_policy.zero_grad()
         policy_loss.backward()
         
-        critic_loss = q1_loss + q2_loss + self._config.lambd * (self._q_func.weights() ** 2).sum()
+        critic_loss = q1_loss + q2_loss + self._config.lambd * ((self._q_func.weights() ** 2).sum() + (self._q_embedding.weights() ** 2).sum()) 
 
         self._optim_critic.zero_grad()
         critic_loss.backward()
