@@ -21,10 +21,12 @@ class Embedding(nn.Module):
                 node_dim : int) -> None:
         super().__init__()
 
-        self._embeding =  nn.Sequential(nn.Linear(node_dim, embed_dim), nn.Tanh())    #torch.sign(2 * torch.rand(node_dim, embed_dim) - 1) # f x d
-        self._agg_embeding =  nn.Sequential(nn.Linear(node_dim, embed_dim), nn.Tanh())
+        self._embeding =  torch.sign(2 * torch.rand(node_dim + pos_enc_dim, embed_dim) - 1) # f x d
+        self._agg_embeding = torch.sign(2 * torch.rand(node_dim + pos_enc_dim, embed_dim) - 1)
         self._pos = torch.sign(2 * torch.rand(embed_dim) - 1)
         self._agg_pos = torch.sign(2 * torch.rand(embed_dim) - 1)
+
+        self._pos_enc_dim = pos_enc_dim
 
     def forward(self, states : Tensor, state_index : Tensor) -> tuple[Tensor, Tensor]:
         """Will encode and then embed each set of devices in the list using postional encoding, embedding layer, and concatiaton of an aggregation
@@ -37,20 +39,13 @@ class Embedding(nn.Module):
 
         states_pre = 2 * states.clamp_(min=-1, max=1) - 1 #map from 0, 1 to -1, 1 values. Note one of the values may be 100 or 0 so we clamp. n x f
         batch_index = generate_batch_index(state_index)
-
-        states = self._embeding(states_pre)
-        states_agg = self._agg_embeding(states_pre)
+        pos_index = torch.cat([torch.arange(start = 1, end = state_index[i + 1] - state_index[i] + 1) for i in range(len(state_index) - 1)])
+        pos_enc = positional_encoding(pos_index, self._pos_enc_dim)
         
-        #Reverese positional encoding. Newest devices getting less permutations
-        size = state_index[1:] - state_index[:-1]
-        sizes = torch.repeat_interleave(size, size)
-        reverse_positions = sizes - 1 - batch_index
+        states_pre = torch.cat((states_pre, pos_enc), dim = 1)
 
-        pos_hv = permute_rows_by_shifts(self._pos.unsqueeze(dim=0).expand(states.shape[0], -1), reverse_positions.to(torch.int))
-        agg_pos_hv = permute_rows_by_shifts(self._agg_pos.unsqueeze(dim=0).expand(states.shape[0], -1), reverse_positions.to(torch.int))
-
-        states = states * pos_hv
-        states_agg = states_agg * agg_pos_hv
+        states = states_pre @ self._embeding
+        states_agg = states_pre @ self._agg_embeding
         
         states = F.normalize(states, p=2, dim=1)
         states_agg = F.normalize(segment_coo(states_agg, batch_index, reduce='sum'), p=2, dim=1)[batch_index]

@@ -9,7 +9,7 @@ from utils import Config
 from training_pipeline import train
 
 PROJECT_NAME = 'MIL NN Experiments'
-MAIN_EXPERIMENT_NAME = 'learned_projection_w_tanh_no_learn_permutation'
+MAIN_EXPERIMENT_NAME = 'fixed_bipolar_representation_pos_enc'
 NUM_RUNS = 1
 OTHER_HPARAMS = { #Just the default params that may be different than the ones in the training file
     'wandb_project_name' : PROJECT_NAME,
