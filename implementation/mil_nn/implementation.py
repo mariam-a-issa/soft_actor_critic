@@ -23,9 +23,8 @@ class RFF(nn.Module):
         self.register_buffer('W', W)
         self.register_buffer('b', b)
     def forward(self, x):
-        z = x @ self.W + self.b                   # [N, half]
-        # scale by sqrt(half) to keep variance ~1
-        return torch.cat([torch.cos(z), torch.sin(z)], dim=-1) / (z.shape[-1]**0.5)
+        z = x @ self.W + self.b                  
+        return torch.cat([torch.cos(z), torch.sin(z)], dim=-1)
 
 
 class Embedding(nn.Module):
