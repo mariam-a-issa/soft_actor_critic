@@ -11,58 +11,94 @@ from torch_geometric.data import Data, Batch
 
 from utils import EPS, LearningLogger
 from .architecture import MultiMessagePassingWithAttention, MultiMessagePassing
-from ..model_utils import reshape, positional_encoding, permute_rows_by_shifts, generate_batch_index
+from ..model_utils import reshape, positional_encoding, permute_rows_by_shifts, generate_batch_index, generate_counting_tensor
+
+class RFF(nn.Module):
+    def __init__(self, in_dim, out_dim, sigma=1.0, seed=0):
+        super().__init__()
+        assert out_dim % 2 == 0, "RFF out_dim must be even (cos+sin)."
+        half = out_dim // 2
+        W = torch.randn(in_dim, half) / sigma
+        b = 2*torch.pi*torch.rand(half)
+        self.register_buffer('W', W)
+        self.register_buffer('b', b)
+    def forward(self, x):
+        z = x @ self.W + self.b                   # [N, half]
+        # scale by sqrt(half) to keep variance ~1
+        return torch.cat([torch.cos(z), torch.sin(z)], dim=-1) / (z.shape[-1]**0.5)
+
 
 class Embedding(nn.Module):
-    
-    def __init__(self, 
-                embed_dim : int,
-                pos_enc_dim : int, #This needs to be even
-                node_dim : int) -> None:
+    """
+    Inputs:
+      states: [N_total, node_dim]  (all device rows concatenated across the batch)
+      state_index: [B+1]           (prefix sums; state_index[i]: start row of episode i)
+    Returns:
+      feat: [N_total, E + 1]       (per-device features + a scalar log(n))
+      batch_index: [N_total]       (episode id per row)
+    """
+    def __init__(self,
+                 embed_dim: int,
+                 pos_enc_dim: int,
+                 node_dim: int,
+                 scales=(0.5, 1.0, 2.0, 4.0),
+                 gamma_mean=0.5,
+                 gamma_var=0.25,
+                 use_var_ctx=True):
         super().__init__()
+        self._node_dim = node_dim
+        self._pos_dim = pos_enc_dim
+        self._gamma_mean = gamma_mean
+        self._gamma_var = gamma_var
+        self._use_var_ctx = use_var_ctx
 
-        self._embeding =  torch.sign(2 * torch.rand(node_dim + pos_enc_dim, embed_dim) - 1) # f x d
-        self._agg_embeding = torch.sign(2 * torch.rand(node_dim + pos_enc_dim, embed_dim) - 1)
-        self._pos = torch.sign(2 * torch.rand(embed_dim) - 1)
-        self._agg_pos = torch.sign(2 * torch.rand(embed_dim) - 1)
+        D = node_dim + pos_enc_dim
+        # Per-sample normalization; no learnable params keeps encoder "fixed"
+        self._in_norm = nn.LayerNorm(D, elementwise_affine=False)
 
-        self._pos_enc_dim = pos_enc_dim
+        # Split embed_dim across scales
+        per = embed_dim // len(scales)
+        # Separate maps (different seeds) for device and aggregation
+        self._dev_maps = nn.ModuleList([RFF(D, per, sigma=s, seed=11+i) for i, s in enumerate(scales)])
+        self._agg_maps = nn.ModuleList([RFF(D, per, sigma=s, seed=23+i) for i, s in enumerate(scales)])
 
-    def forward(self, states : Tensor, state_index : Tensor) -> tuple[Tensor, Tensor]:
-        """Will encode and then embed each set of devices in the list using postional encoding, embedding layer, and concatiaton of an aggregation
-            states: All of the device states in a flattened mxn where m is the total numner of devices and n 2 x embd dim
-            state_index : An array representing the start index of each batch. The last index should be len of states as this indicates where the next batch should go
-            
-            return tensor of same of shape mx2*emb dim
-                   batch index where each element corresponds to a device in states and represents what element of the batch it is
-        """
+    def forward(self, states: torch.Tensor, state_index: torch.Tensor):
+        # Map inputs to [-1,1] without in-place ops (adjust if your raw range differs)
+        x = states.clamp(0, 1) * 2 - 1
 
-        states_pre = 2 * states.clamp_(min=-1, max=1) - 1 #map from 0, 1 to -1, 1 values. Note one of the values may be 100 or 0 so we clamp. n x f
+        # Build positional encodings per device row
+        pos_idx = generate_counting_tensor(state_index)
+        pos_enc = positional_encoding(pos_idx, self._pos_dim)
+
+        pre = torch.cat([x, pos_enc], dim=-1)
+        pre = self._in_norm(pre)  # per-sample normalization
+
+        # Fixed features
+        h_dev = torch.cat([m(pre) for m in self._dev_maps], dim=-1)       # [N_total, E]
+        h_agg = torch.cat([m(pre) for m in self._agg_maps], dim=-1)       # [N_total, E]
+
+        # Episode ids for each device row
         batch_index = generate_batch_index(state_index)
-        pos_index = torch.cat([torch.arange(start = 1, end = state_index[i + 1] - state_index[i] + 1) for i in range(len(state_index) - 1)])
-        pos_enc = positional_encoding(pos_index, self._pos_enc_dim)
-        
-        states_pre = torch.cat((states_pre, pos_enc), dim = 1)
+        # ---- Aggregations ----
+        mean_ctx = segment_coo(h_agg, batch_index, reduce='mean')        # [B, E]
+        mean_ctx = mean_ctx[batch_index]                                 # broadcast
 
-        states = states_pre @ self._embeding
-        states_agg = states_pre @ self._agg_embeding
-        
-        states = F.normalize(states, p=2, dim=1)
-        states_agg = F.normalize(segment_coo(states_agg, batch_index, reduce='sum'), p=2, dim=1)[batch_index]
-        
-        return states * states_agg, batch_index
-    
-    def weights(self) -> Tensor:
-        """Will return all of the weights of the embedding module
+        feat = h_dev + self._gamma_mean * torch.tanh(mean_ctx)
 
-        Returns:
-            Tensor: Embedding module weights
-        """
+        # if self.use_var_ctx:
+        #     sums   = segment_coo(h_agg, batch_index, reduce='sum')       # [B, E]
+        #     counts = segment_coo(torch.ones(h_agg.size(0), 1, device=device), batch_index, reduce='sum')  # [B,1]
+        #     var_ctx = (sums / counts.clamp_min(1.0).sqrt())              # variance-preserving sum/√n
+        #     var_ctx = var_ctx[batch_index]
+        #     feat = feat + self.gamma_var * torch.tanh(var_ctx)
 
-        return torch.cat((
-            self._embeding[0].weight.flatten(),
-            self._agg_embeding[0].weight.flatten()
-        ), dim = 0)
+        # # Append log(count) so heads can rescale by group size if needed
+        # counts = segment_coo(torch.ones(h_agg.size(0), 1, device=device), batch_index, reduce='sum')  # [B,1]
+        # logn = counts.clamp_min(1.0).log()[batch_index]                   # [N_total, 1]
+        # feat = torch.cat([feat, logn], dim=-1)                            # [N_total, E+1]
+
+        return feat, batch_index
+
     
 class AttentionEmbedding(nn.Module):
     
