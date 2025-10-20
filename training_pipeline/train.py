@@ -2,13 +2,14 @@ import random
 from copy import deepcopy
 
 import torch
+from torch import Tensor
 import gym
 import numpy as np
 
-from implementation import create_agent
+from implementation import create_agent, Agent
 from utils import Transition, LearningLogger, Config
 from .evaluate import evaluate
-from .helpers import clean_state, get_action, get_train_env_info, setup_env
+from .env import EnvCompat, Connector, setup_env
 
 LOG_DIR = 'runs'
 MAGIC_CORP_NUM = 20 #Magic number involved with indexing in the corp scenario
@@ -22,10 +23,12 @@ def train(base_dir : str = LOG_DIR, #Root of all experiments
     logger = LearningLogger(base_dir, experiment_name, hp_info, config)
     
     env : gym.Env
-    env = gym.make(**config.environment_info)
+    env = EnvCompat.make(**config.environment_info)
     env.reset()
+
+    ctr = Connector(env)
     
-    action_space, state_space, env = get_train_env_info(env, config)
+    state_space, action_space = ctr.get_env_info()
     device = setup_env(config)
 
     agent = create_agent(node_dim=state_space,
@@ -36,12 +39,12 @@ def train(base_dir : str = LOG_DIR, #Root of all experiments
     num_epi = 0
     epi_reward = 0
     
-    state = clean_state(env.reset(), config.graph)
+    state = ctr.format_state(env.reset()[0])
     try:
         while config.max_steps > steps:
-            action_nas, action = get_action(state=state, env=env, agent=agent, graph=config.graph, explore_steps=config.explore_steps, steps=steps)
-            next_state, reward, done, _ = env.step(action_nas)
-            next_state = clean_state(next_state, config.graph)
+            action_nas, action = _get_action(state=state, agent=agent, explore_steps=config.explore_steps, steps=steps, ctr=ctr)
+            next_state, reward, done, _, _= env.step(action_nas)
+            next_state = ctr.format_state(next_state)
             trans = Transition( #states will be tensors, actions will be tensor integers, the reward will be a float, and terminated will be a bool
                 state=state,
                 action=action,
@@ -73,3 +76,14 @@ def train(base_dir : str = LOG_DIR, #Root of all experiments
     finally:
         env.close()
         logger.close()
+
+
+
+def _get_action(explore_steps : int, steps : int, agent : Agent, state : Tensor, ctr : Connector):
+    if explore_steps <= steps:
+        action = agent.sample(state) 
+        return ctr.format_action(action), action
+    else:
+        _, action_space = ctr.get_env_info()
+        action = random.randint(0, action_space-1) 
+        return ctr.format_action(action), action

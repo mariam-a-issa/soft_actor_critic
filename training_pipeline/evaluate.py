@@ -2,22 +2,25 @@ import gymnasium as gym
 
 from implementation import Agent
 from utils import LearningLogger
-from .helpers import convert_int_action, clean_state
+from .env import Connector, EnvCompat
 
-def evaluate(env : gym.Env, agent : Agent, num_eval : int, cur_epi : int, graph : bool) -> None:
+def evaluate(env : EnvCompat, agent : Agent, num_eval : int, cur_epi : int, graph : bool) -> None:
     """Will evaluate the current agent on the environment for a given amount of episodes and then log the results"""
     
     epi_reward = 0
+
+    ctr = Connector(env)
     
     for i in range(num_eval):
         
         done = False
-        state = clean_state(env.reset(), graph)
+        state = ctr.format_state(env.reset()[0])
         
         while not done:
             action = agent.evaluate(state)
-            next_state, reward, done, _ = env.step(convert_int_action(action.data, env, state, graph))
-            next_state = clean_state(next_state, graph)
+            action_nas = ctr.format_action(action)
+            next_state, reward, done, _, _ = env.step(action_nas)
+            next_state = ctr.format_state(next_state)
             if reward >0:
                 print(f'In eval {i} reward of {reward}')
             epi_reward += reward

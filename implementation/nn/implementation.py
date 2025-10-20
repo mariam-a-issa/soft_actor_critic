@@ -29,13 +29,10 @@ class QFunction:
         
         """Will create a q function that will use two q models"""
         
-        actual_input_size = MAX_ROWS * input_size
-        actual_output_size = MAX_ROWS * output_size
-        
         self._g_clip = grad_clip
         
-        self._q1 = BaseNN(actual_input_size, actual_output_size, [hidden_size, hidden_size], id=1)
-        self._q2 = BaseNN(actual_input_size, actual_output_size, [hidden_size, hidden_size], id=2)
+        self._q1 = BaseNN(input_size, output_size, [hidden_size, hidden_size], id=1)
+        self._q2 = BaseNN(input_size, output_size, [hidden_size, hidden_size], id=2)
         
         self._optim1 = optim.Adam(self._q1.parameters(), lr=lr, eps=_EPS)
         self._optim2 = optim.Adam(self._q2.parameters(), lr=lr, eps=_EPS)
@@ -46,10 +43,7 @@ class QFunction:
         self._discount = discount
         
         self._action_s = output_size
-        self._action_act_s = actual_output_size
-        
         self._state_s = input_size
-        self._state_act_s = actual_input_size
         
 
     def set_actor(self, actor : 'Actor') -> None:
@@ -66,7 +60,7 @@ class QFunction:
     def update(self, trans : Transition) -> Tensor:
         """Will update using equations 3, 4, and 12 and return the loss for both q functions"""
         
-        batch_size = len(trans.state)
+        batch_size = trans.state.shape[0]
         
         with torch.no_grad():
             next_log_pi : Tensor
@@ -75,8 +69,8 @@ class QFunction:
             q_log_dif : Tensor = self._target(trans.next_state) - self._alpha() * next_log_pi
             
             #Batch wise dot product
-            next_v = torch.bmm(next_action_probs.view(batch_size, 1, self._action_act_s),
-                               q_log_dif.view(batch_size, self._action_act_s, 1)).view(batch_size, 1)
+            next_v = torch.bmm(next_action_probs.view(batch_size, 1, self._action_s),
+                               q_log_dif.view(batch_size, self._action_s, 1)).view(batch_size, 1)
             
             next_q : Tensor = trans.reward + (1 - trans.done) * self._discount * next_v
 
@@ -86,8 +80,8 @@ class QFunction:
         #The action will be b x 1 where each element corresponds to index of action
         #By doing gather, make q_a with shape b x 1 where the element is the q value for the performed action
         
-        q1_a = q1.gather(1, trans.action)
-        q2_a = q2.gather(1, trans.action)
+        q1_a = q1.gather(1, trans.action.view(-1, 1))
+        q2_a = q2.gather(1, trans.action.view(-1, 1))
 
         self._optim1.zero_grad()
         self._optim2.zero_grad()
@@ -197,32 +191,26 @@ class Actor(BaseNN):
                  lr : float,
                  grad_clip : float) -> None:
         
-        actual_input_size = MAX_ROWS * input_size
-        actual_output_size = MAX_ROWS * output_size
             
         self._g_clip = grad_clip
             
-        super().__init__(actual_input_size, actual_output_size, [hidden_size, hidden_size])
+        super().__init__(input_size, output_size, [hidden_size, hidden_size])
         
         self._q_func = target
         self._alpha = alpha
         self._optim = optim.Adam(self.parameters(), lr=lr, eps=_EPS)
         
         self._action_s = output_size
-        self._action_act_s = actual_output_size
+        self._action_act_s = output_size
         
         self._state_s = input_size
-        self._state_act_s = actual_input_size
+        self._state_act_s = input_size
 
-    def forward(self, state : Tensor, num_devices : Tensor = None, batch_size : int = None) -> tuple[Tensor]:
+    def forward(self, state : Tensor) -> tuple[Tensor]:
         """Will give the action, log_prob, and action_probs of action"""
 
         #Implementation very similar to cleanrl
         logits : Tensor = super().forward(state)
-        
-        if num_devices is not None: #Basically when we need to mask output
-            batch_size = state.shape[0] if batch_size is None else batch_size
-            logits = self._mask_func(batch_size, logits, NEG_INF, num_devices)
             
         dist = Categorical(logits=logits)
         action = dist.sample()
@@ -230,23 +218,24 @@ class Actor(BaseNN):
         log_prob = F.log_softmax(logits, dim=-1)
         return action, log_prob, action_probs
     
-    def _mask_func(self, batch_size : int, logits : Tensor, mask_num : float, num_devices : Tensor) -> Tensor:
-        # Create an index tensor for each row, broadcast to match the size of matrix         # [1, 2, 3, ... i]
-        row_indices = torch.arange(logits.size(-1)).unsqueeze(0).expand(batch_size, -1)      # [1, 2, 3  ... i]
-        # Use broadcasting to create a boolean mask                                          # ^  
-        num_devices *= self._action_s                                                        # |
-        mask = row_indices < num_devices.unsqueeze(1)                                        # |_ Then create a mask of same dimensions as this matrix where True at indicies are less than action size per device times device 
-        return logits.masked_fill(~mask, float(mask_num))
+    # We are not trying to do padding here
+    # def _mask_func(self, batch_size : int, logits : Tensor, mask_num : float, num_devices : Tensor) -> Tensor:
+    #     # Create an index tensor for each row, broadcast to match the size of matrix         # [1, 2, 3, ... i]
+    #     row_indices = torch.arange(logits.size(-1)).unsqueeze(0).expand(batch_size, -1)      # [1, 2, 3  ... i]
+    #     # Use broadcasting to create a boolean mask                                          # ^  
+    #     num_devices *= self._action_s                                                        # |
+    #     mask = row_indices < num_devices.unsqueeze(1)                                        # |_ Then create a mask of same dimensions as this matrix where True at indicies are less than action size per device times device 
+    #     return logits.masked_fill(~mask, float(mask_num))
     
-    def evaluate(self, state : Tensor, num_devices : Tensor) -> Tensor:
+    def evaluate(self, state : Tensor) -> Tensor:
         """Will return the best action for evaulation"""
         
-        return torch.argmax(self._mask_func(1, super().forward(state), '-inf', num_devices))
+        return torch.argmax(super().forward(state))
     
     def update(self, trans : Transition) -> Tensor:
         """Will update according to equation 12 and return the actors loss, actors entropy, alpha_loss, and the current alpha"""
 
-        batch_size = len(trans.state)
+        batch_size = trans.state.shape[0]
         
         action_probs : Tensor; log_probs : Tensor; difference : Tensor; loss : Tensor
         _, log_probs, action_probs = self(trans.state)

@@ -13,8 +13,8 @@ MAIN_EXPERIMENT_NAME = 'test'
 NUM_RUNS = 1
 OTHER_HPARAMS = { #Just the default params that may be different than the ones in the training file
     'wandb_project_name' : PROJECT_NAME,
-    'environment_info' : {'id' : 'NASimEmu-v0', 'emulate' : False, 'scenario_name' : '/home/ian/projects/hd_sac/NetworkAttackSimulator/nasim/scenarios/benchmark/medium.yaml', 'step_limit' : 100, 'augment_with_action' : True},
-    'type_agent' : 'nn_mil',
+    'environment_info' : {'id' : 'nasim:TinyPO-v0', 'flat_actions' : True, 'flat_obs' : True},
+    'type_agent' : 'nn',
     'wandb' : False,
     'tensorboard' : False
 }
