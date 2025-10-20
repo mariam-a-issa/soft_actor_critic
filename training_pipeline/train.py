@@ -12,7 +12,6 @@ from .evaluate import evaluate
 from .env import EnvCompat, Connector, setup_env
 
 LOG_DIR = 'runs'
-MAGIC_CORP_NUM = 20 #Magic number involved with indexing in the corp scenario
 
 def train(base_dir : str = LOG_DIR, #Root of all experiments
           experiment_name : str = '', #Groups of various experiments

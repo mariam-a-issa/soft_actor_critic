@@ -2,8 +2,6 @@ from dataclasses import dataclass, field, replace, asdict
 from typing import Optional, Dict, Literal
 import json
 
-
-
 @dataclass
 class Config:
     """
@@ -157,7 +155,7 @@ class Config:
                 config_dict.update(config_dict.pop(key))  # Unpack and remove the original key
         return config_dict
     
-    def update_from_json(self, json_path):
+    def update_from_json(self, json_path : str):
         """Load configuration updates from a JSON file and return a new Config object with the updates applied."""
         with open(json_path, 'r') as file:
             updates = json.load(file)

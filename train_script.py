@@ -8,50 +8,67 @@ from git import Repo
 from utils import Config
 from training_pipeline import train
 
-PROJECT_NAME = 'New Encoder'
-MAIN_EXPERIMENT_NAME = 'test'
-NUM_RUNS = 1
 OTHER_HPARAMS = { #Just the default params that may be different than the ones in the training file
-    'wandb_project_name' : PROJECT_NAME,
     'environment_info' : {'id' : 'nasim:TinyPO-v0', 'flat_actions' : True, 'flat_obs' : True},
     'type_agent' : 'nn',
     'wandb' : False,
     'tensorboard' : False
 }
 
-def train_hyper_param(name : str, values : list[float], seeds : list[int]):
+def train_hyper_param():
     
     parser = argparse.ArgumentParser()
     parser.add_argument('-d', '--debug', action='store_true', help='Enable debug mode')
+    parser.add_argument('-j', '--json_path', type=str, help='File Path to JSON File', default=None)
+    parser.add_argument('-n', '--experiment_name', type=str, help='Name of the current experiment', default=None)
+    parser.add_argument('-hp', '--hyperparam', type=str, help='Name of the hyperparameter to tune', default=None)
+    parser.add_argument('-v', '--values', type=str, help='Comma seperated list of hyperparam values to test', default=None)
+    parser.add_argument('-s', '--seeds', type=str, help='Comma seperated list of seeds', default=None)
+    parser.add_argument('-p', '--project_name', type=str, help='Name of the wandb project', default=None)
     args = parser.parse_args()
     
     if not args.debug:
         if not _check_git_clean():
             raise RuntimeError("Commit latest changes before running an experiment")
-        
         note = _get_note()
     else:
-        note = None
-        
-    h_params = copy(OTHER_HPARAMS)
-    h_params['notes'] = note
-    for value in values:
+        train(config=Config().with_updates(**OTHER_HPARAMS))
 
-        h_params[name] = value
+    if args.json_path:
+        h_params = {}
+        config = Config().update_from_json(args.json_path)
+    else:
+        h_params = copy(OTHER_HPARAMS)
+        config = Config()
+
+    if not args.experiment_name or not args.seeds or not args.project_name:
+        raise TypeError('Need to provide experiemnt and project name as well as seeds when training')
+    
+    experiment_name = args.experiment_name
+    seeds = args.seeds.split(',')
+    h_params['wandb_project_name'] = args.project_name
+    
+    if args.hyperparam:
+        name = args.hyperparam
+        values = args.values.split(',')
+    else:
+        values = [None]
+
+    h_params['notes'] = note
+
+    for value in values:
+        if value:
+            h_params[name] = value
 
         for seed in seeds:
-            
             h_params['seed'] = seed
+            
+            if value:
+                hp_info = f'{name}_{value}'
+            else:
+                hp_info = ''
 
-            try:
-                train(base_dir='runs', experiment_name = MAIN_EXPERIMENT_NAME, hp_info = f'{name}_{value}', config=Config().with_updates(**h_params))
-            except ValueError as e: 
-                directory_path = f'runs/{MAIN_EXPERIMENT_NAME}/{name}_experiment/{name}({value})_seed({seed})/'
-                os.makedirs(directory_path, exist_ok=True)
-                f = open(f'runs/{MAIN_EXPERIMENT_NAME}/{name}_experiment/{name}({value})_seed({seed})/nan_v({value})_seed({seed}).txt', 'w', encoding='utf-8')
-                f.write('I have NaNed')
-                f.close()
-                raise e
+            train(experiment_name=experiment_name, hp_info=hp_info, config=config.with_updates(**h_params))
 
 def _check_git_clean(repo_path='.'):
     """
@@ -75,4 +92,4 @@ def _get_note() -> str:
 
 if __name__ == '__main__':
     os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8' #Needed since training will have to be deterministic. More info at https://docs.nvidia.com/cuda/cublas/index.html#cublasApi_reproducibility
-    train_hyper_param('policy_lr', [3e-4], [0, 1, 2])
+    train_hyper_param()
