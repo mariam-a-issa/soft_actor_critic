@@ -61,7 +61,7 @@ def train_hyper_param():
             h_params[name] = value
 
         for seed in seeds:
-            h_params['seed'] = seed
+            h_params['seed'] = int(seed)
             
             if value:
                 hp_info = f'{name}_{value}'
