@@ -12,7 +12,9 @@ OTHER_HPARAMS = { #Just the default params that may be different than the ones i
     'environment_info' : {'id' : 'nasim:TinyPO-v0', 'flat_actions' : True, 'flat_obs' : True},
     'type_agent' : 'nn',
     'wandb' : False,
-    'tensorboard' : False
+    'tensorboard' : False,
+    'g_drive' : True,
+    'max_steps' : 200
 }
 
 def train_hyper_param():
@@ -60,13 +62,13 @@ def train_hyper_param():
         if value:
             h_params[name] = value
 
+        if value:
+            hp_info = f'{name}_{value}'
+        else:
+            hp_info = ''
+
         for seed in seeds:
             h_params['seed'] = int(seed)
-            
-            if value:
-                hp_info = f'{name}_{value}'
-            else:
-                hp_info = ''
 
             train(experiment_name=experiment_name, hp_info=hp_info, config=config.with_updates(**h_params))
 

@@ -5,8 +5,11 @@ from datetime import datetime
 from torch.utils.tensorboard import SummaryWriter
 import git
 import wandb as wb
+import pandas as pd
 
 from .config import Config
+from .g_drive import DriveService
+from .local_logger import LocalLogger
 
 
 class LearningLogger:
@@ -30,9 +33,10 @@ class LearningLogger:
         save_path = Path(base_dir) / experiment_name / hp_info / f'({config.seed})'
         repo = git.Repo(search_parent_directories=True)
         sha = repo.head.object.hexsha
-        
         now = datetime.now()
         formatted = now.strftime("%m_%d_%H_%M")
+        
+        name = f'{formatted}_{sha[:config.num_sha_char]}_{experiment_name}_{hp_info}_seed-{config.seed}'
 
         if config.tensorboard:
             tense_writer = SummaryWriter(save_path)
@@ -45,7 +49,7 @@ class LearningLogger:
                              group=f'{formatted}_{sha[:config.num_sha_char]}_{experiment_name}_{hp_info}',
                              job_type = f'seed-{config.seed}',
                              config=self._hparams,
-                             name = f'{formatted}_{sha[:config.num_sha_char]}_{experiment_name}_{hp_info}_seed-{config.seed}',
+                             name = name,
                              notes = config.notes
                              )
             self._loggers['wandb'] = writer
@@ -53,11 +57,18 @@ class LearningLogger:
             writer.define_metric('Episodic Reward', step_metric='Episode')
         else:
             self._loggers['wandb'] = None
-
-        if config.save_csv:
+        
+        if config.g_drive or config.csv:
+            self._loggers['local_logger'] = LocalLogger(save_path)
+        else:
+            self._loggers['local_logger'] = None
+        
+        if config.save_hparam_csv:
             _csv_of_hparams(save_path, self._hparams)
             
         self._cur_step = 0
+        self._config = config
+        self._name = name
             
     def add_x_axis_metric_labels(self, metrics_labels : dict[str : list[str]]) -> None:
         """Will create labels for specific metrics that are different from the standard 'step'
@@ -86,9 +97,14 @@ class LearningLogger:
             if episodes is not None:
                 data['Episode'] = episodes
             self._loggers['wandb'].log(data, step=steps)
-        
+
         if steps:
             self._cur_step = steps
+
+        if self._loggers['local_logger']:
+            for key, value in data.items():
+                self._loggers['local_logger'].save_value(self._cur_step, key, value)
+        
             
     def cur_step(self)->int:
         """Will return roughly the current step"""
@@ -103,6 +119,18 @@ class LearningLogger:
                 
         if self._loggers['wandb']:
             self._loggers['wandb'].finish()
+
+        if self._loggers['local_logger']:
+            self._loggers['local_logger'].save_run(['Training reward'])
+
+            if self._config.g_drive:
+                service = DriveService()
+
+                fold_id = service.create_folder(self._name)
+                service.upload_file_to_folder(fold_id, self._loggers['local_logger'].save_path / 'data.csv')
+                service.upload_file_to_folder(fold_id, self._loggers['local_logger'].save_path / f'{"Training_reward"}_graph.png')
+
+
 
 def _csv_of_hparams(log_dir : Path, h_params_dict : dict):
     """Creates a csv at the log dir with the given hyperparameters"""

@@ -105,10 +105,16 @@ class Config:
     
     num_evals: int = 5
     """Number of evaluation episodes per evaluation cycle"""
+
+    csv: bool = False
+    """Whether to log results to a CSV"""
     
-    save_csv: bool = False
-    """Whether to log results to a CSV file"""
+    save_hparam_csv: bool = False
+    """Whether to save hparams to a CSV file"""
     
+    g_drive: bool = False
+    """Whether to log results to google drive"""
+
     tensorboard: bool = False
     """Whether to log metrics to TensorBoard"""
     
