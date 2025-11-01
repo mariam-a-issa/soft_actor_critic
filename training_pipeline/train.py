@@ -64,7 +64,9 @@ def train(base_dir : str = LOG_DIR, #Root of all experiments
             if done:
                 
                 LearningLogger().log_scalars({'Training reward' : epi_reward}, episodes=num_epi)
-                
+
+                next_state = ctr.format_state(env.reset()[0])
+
                 epi_reward = 0
                 if config.explore_steps <= steps:
                     num_epi += 1

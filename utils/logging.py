@@ -15,6 +15,7 @@ from .local_logger import LocalLogger
 class LearningLogger:
     """Creates a logging class to handle specific types of logging for data about the perforamnce of the model"""
     _instance = None
+    _time = None
     
     def __new__(cls, base_dir : str = None, 
                 experiment_name : str = None, 
@@ -22,6 +23,10 @@ class LearningLogger:
                 config : Config = None):
         """Allows logger to follow singleton design"""
         if cls._instance is None or base_dir is not None or experiment_name is not None or hp_info is not None: #Build new instance when no new one exists or when the logging data is being changed
+            
+            if cls._time is None:
+                cls._time = datetime.now().strftime("%m_%d_%H_%M")
+        
             cls._instance = super(LearningLogger, cls).__new__(cls)
             cls._instance._initialize(base_dir, experiment_name, hp_info, config)
         return cls._instance
@@ -30,13 +35,12 @@ class LearningLogger:
         """Will create tools used for logging. Done in _initialize instead of __init__ for the singleton to only do this when we are actually resetting in __new__"""
         self._loggers = dict()
         self._hparams = config.to_flat_dict() #Can be used at the end of a run alongside metrics to log hparams
-        save_path = Path(base_dir) / experiment_name / hp_info / f'({config.seed})'
+        save_path = Path(base_dir) / experiment_name / hp_info / f'seed_({config.seed})'
         repo = git.Repo(search_parent_directories=True)
         sha = repo.head.object.hexsha
-        now = datetime.now()
-        formatted = now.strftime("%m_%d_%H_%M")
         
-        name = f'{formatted}_{sha[:config.num_sha_char]}_{experiment_name}_{hp_info}_seed-{config.seed}'
+        formated_experiment_name = f'{LearningLogger._time}_{sha[:config.num_sha_char]}_{experiment_name}_{hp_info}'
+        name = f'{LearningLogger._time}_{sha[:config.num_sha_char]}_{experiment_name}_{hp_info}_seed-{config.seed}'
 
         if config.tensorboard:
             tense_writer = SummaryWriter(save_path)
@@ -46,7 +50,7 @@ class LearningLogger:
                 
         if config.wandb:
             writer = wb.init(project=config.wandb_project_name, 
-                             group=f'{formatted}_{sha[:config.num_sha_char]}_{experiment_name}_{hp_info}',
+                             group=formated_experiment_name,
                              job_type = f'seed-{config.seed}',
                              config=self._hparams,
                              name = name,
@@ -68,7 +72,7 @@ class LearningLogger:
             
         self._cur_step = 0
         self._config = config
-        self._name = name
+        self._name = formated_experiment_name
             
     def add_x_axis_metric_labels(self, metrics_labels : dict[str : list[str]]) -> None:
         """Will create labels for specific metrics that are different from the standard 'step'
@@ -121,14 +125,23 @@ class LearningLogger:
             self._loggers['wandb'].finish()
 
         if self._loggers['local_logger']:
-            self._loggers['local_logger'].save_run(['Training reward'])
+            self._loggers['local_logger'].save_run([([('Training reward', 'blue')], 'Training reward'),
+                                                    ([('Entropy', 'blue')], 'Entropy'),
+                                                    ([('QFunc1 Loss', 'red'), ('QFunc2 Loss', 'orange'), ('Actor Loss', 'blue')], 'Loss')])
 
             if self._config.g_drive:
                 service = DriveService()
+                
+                try:
+                    fold_id = service.get_folder_id_by_name(folder_name=self._name)
+                except ValueError:
+                    fold_id = service.create_folder(folder_name=self._name)
 
-                fold_id = service.create_folder(self._name)
-                service.upload_file_to_folder(fold_id, self._loggers['local_logger'].save_path / 'data.csv')
-                service.upload_file_to_folder(fold_id, self._loggers['local_logger'].save_path / f'{"Training_reward"}_graph.png')
+                fold_id = service.create_folder(folder_name=f'seed_{self._config.seed}', parent_id=fold_id)
+                service.upload_file_to_folder(folder_id=fold_id, file_path=self._loggers['local_logger'].save_path / 'data.csv')
+                service.upload_file_to_folder(folder_id=fold_id, file_path=self._loggers['local_logger'].save_path / f'{"Training_reward"}_graph.png')
+                service.upload_file_to_folder(folder_id=fold_id, file_path=self._loggers['local_logger'].save_path / f'{"Entropy"}_graph.png')
+                service.upload_file_to_folder(folder_id=fold_id, file_path=self._loggers['local_logger'].save_path / f'{"QFunc1_Loss_QFunc2_Loss_Actor_Loss"}_graph.png')
 
 
 

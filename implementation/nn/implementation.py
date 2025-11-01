@@ -1,110 +1,38 @@
 from copy import deepcopy
 
 import torch
-from torch import Tensor, optim
+from torch import Tensor
 from torch.distributions import Categorical
 from torch.nn import functional as F
-from torch.nn.utils import clip_grad_norm_
+from torch import nn
 
 from .architecture import BaseNN
 from utils.data_collection import Transition
-from utils import MAX_ROWS, NEG_INF
 
 #Parameter update implementation from https://arxiv.org/abs/1910.07207
 
-_EPS = 1e-4 #Term used in cleanrl
 
-class QFunction:
+class QFunction(nn.Module):
 
     def __init__(self, 
                  input_size : int, 
                  output_size : int, 
-                 hidden_size : int, 
-                 actor : 'Actor', 
-                 target : 'QFunctionTarget',
-                 alpha : 'Alpha',
-                 lr : float,
-                 discount : float,
-                 grad_clip : float) -> None:
+                 hidden_size : int) -> None:
         
         """Will create a q function that will use two q models"""
-        
-        self._g_clip = grad_clip
-        
+        super().__init__() 
         self._q1 = BaseNN(input_size, output_size, [hidden_size, hidden_size], id=1)
         self._q2 = BaseNN(input_size, output_size, [hidden_size, hidden_size], id=2)
         
-        self._optim1 = optim.Adam(self._q1.parameters(), lr=lr, eps=_EPS)
-        self._optim2 = optim.Adam(self._q2.parameters(), lr=lr, eps=_EPS)
-
-        self._actor = actor
-        self._target = target
-        self._alpha = alpha
-        self._discount = discount
-        
         self._action_s = output_size
         self._state_s = input_size
-        
 
-    def set_actor(self, actor : 'Actor') -> None:
-        """Will set the actor used for parameter updates"""
-        self._actor = actor
+    def q_values(self, state : Tensor) -> Tensor:
+        return self._q1(state), self._q2(state)
 
-    def set_target(self, target : 'QFunction') -> None:
-        self._target = target
-
-    def __call__(self, state : Tensor) -> Tensor:
+    def forward(self, state : Tensor) -> Tensor:
         """Will give a Tensor where each index represents the q value for the corresponding action"""
         return torch.min(self._q1(state), self._q2(state))
-    
-    def update(self, trans : Transition) -> Tensor:
-        """Will update using equations 3, 4, and 12 and return the loss for both q functions"""
-        
-        batch_size = trans.state.shape[0]
-        
-        with torch.no_grad():
-            next_log_pi : Tensor
-            next_action_probs : Tensor
-            _, next_log_pi, next_action_probs = self._actor(trans.next_state)
-            q_log_dif : Tensor = self._target(trans.next_state) - self._alpha() * next_log_pi
-            
-            #Batch wise dot product
-            next_v = torch.bmm(next_action_probs.view(batch_size, 1, self._action_s),
-                               q_log_dif.view(batch_size, self._action_s, 1)).view(batch_size, 1)
-            
-            next_q : Tensor = trans.reward + (1 - trans.done) * self._discount * next_v
-
-        q1 : Tensor = self._q1(trans.state)
-        q2 : Tensor = self._q2(trans.state)
-
-        #The action will be b x 1 where each element corresponds to index of action
-        #By doing gather, make q_a with shape b x 1 where the element is the q value for the performed action
-        
-        q1_a = q1.gather(1, trans.action.view(-1, 1))
-        q2_a = q2.gather(1, trans.action.view(-1, 1))
-
-        self._optim1.zero_grad()
-        self._optim2.zero_grad()
-
-        ls1 = 1/2 * ((q1_a - next_q) ** 2).mean()
-        ls2 = 1/2 * ((q2_a - next_q) ** 2).mean()
-
-        ls1.backward()
-        ls2.backward()
-        
-        if self._g_clip is not None:
-            torch.nn.utils.clip_grad_norm_(self._q1.parameters(), self._g_clip)
-            torch.nn.utils.clip_grad_norm_(self._q2.parameters(), self._g_clip)
-        
-        self._optim1.step()
-        self._optim2.step()
-        
-        return torch.stack((ls1, ls2))
-
-    def to(self, device) -> None:
-        """Will move the QFunction to the device"""
-        self._q1.to(device)
-        self._q2.to(device)
         
 class QFunctionTarget:
 
@@ -136,81 +64,29 @@ class QFunctionTarget:
         for param, target_param in zip(self._actual._q2.parameters(), self._target._q2.parameters()):
             target_param.data.copy_(self._tau * param.data + (1 - self._tau) * target_param.data)
 
-class Alpha:
-
-    def __init__(self, 
-                action_space_size : int,
-                value : float, #Either the scaling coefficient or the actual alpha value
-                lr : float,
-                autotune : bool = True) -> None:
-        
-        self._target_ent = -value * torch.log(1 / torch.tensor(action_space_size))
-        self._log_alpha = torch.zeros(1, requires_grad=True)
-        self._optim = optim.Adam([self._log_alpha], lr = lr, eps=_EPS)
-        self._action_s = action_space_size
-        
-        self._value = torch.tensor(value)
-        self._autotune = autotune
-
-    def to(self, device) -> None:
-        """Will move the alpha to the device"""
-        self._target_ent.to(device)
-        self._log_alpha.to(device)
-
-    def __call__(self) -> Tensor:
-        """Will give the current alpha"""
-        if not self._autotune:
-            return self._value
-        return self._log_alpha.exp()
-    
-    def update(self, log_probs : Tensor, action_probs : Tensor, batch_size : int) -> tuple[Tensor, Tensor]:
-        """Will update according to equation 11"""
-        
-        if not self._autotune:
-            return torch.stack((torch.tensor(0), self._value))
-        
-        #Batch wise dot prodcut then mean
-        loss = torch.bmm(action_probs.detach().view(batch_size, 1, self._action_s), 
-                         (-self._log_alpha.exp() * (log_probs + self._target_ent).detach()).view(batch_size, self._action_s, 1)).mean()
-
-        self._optim.zero_grad()
-        loss.backward()
-        self._optim.step()
-        
-        return loss, self().squeeze() #Squeeze so that it is just the value
-
 
 class Actor(BaseNN):
 
     def __init__(self, 
                  input_size: int,
                  output_size: int, 
-                 hidden_size : int,
-                 target : QFunctionTarget, 
-                 alpha : 'Alpha',
-                 lr : float,
-                 grad_clip : float) -> None:
-        
-            
-        self._g_clip = grad_clip
+                 hidden_size : int) -> None:
             
         super().__init__(input_size, output_size, [hidden_size, hidden_size])
-        
-        self._q_func = target
-        self._alpha = alpha
-        self._optim = optim.Adam(self.parameters(), lr=lr, eps=_EPS)
-        
         self._action_s = output_size
         self._action_act_s = output_size
         
         self._state_s = input_size
         self._state_act_s = input_size
 
+    def logits(self, state : Tensor) -> Tensor:
+        return super().forward(state)
+
     def forward(self, state : Tensor) -> tuple[Tensor]:
         """Will give the action, log_prob, and action_probs of action"""
 
         #Implementation very similar to cleanrl
-        logits : Tensor = super().forward(state)
+        logits : Tensor = self.logits(state)
             
         dist = Categorical(logits=logits)
         action = dist.sample()
@@ -227,41 +103,10 @@ class Actor(BaseNN):
     #     mask = row_indices < num_devices.unsqueeze(1)                                        # |_ Then create a mask of same dimensions as this matrix where True at indicies are less than action size per device times device 
     #     return logits.masked_fill(~mask, float(mask_num))
     
+    def sample(self, state : Tensor) -> Tensor:
+        return self(state)[0]
+
     def evaluate(self, state : Tensor) -> Tensor:
         """Will return the best action for evaulation"""
         
-        return torch.argmax(super().forward(state))
-    
-    def update(self, trans : Transition) -> Tensor:
-        """Will update according to equation 12 and return the actors loss, actors entropy, alpha_loss, and the current alpha"""
-
-        batch_size = trans.state.shape[0]
-        
-        action_probs : Tensor; log_probs : Tensor; difference : Tensor; loss : Tensor
-        _, log_probs, action_probs = self(trans.state)
-
-        # with torch.no_grad():
-        q_v = self._q_func(trans.state)
-        
-        difference = self._alpha() * log_probs - q_v
-
-        loss = torch.bmm(action_probs.view(batch_size, 1, self._action_act_s),  difference.view(batch_size, self._action_act_s, 1)).mean()
-
-        self._optim.zero_grad()
-        loss.backward()
-        
-        if self._g_clip is not None:
-            torch.nn.utils.clip_grad_norm_(self.parameters(), self._g_clip)
-        
-        self._optim.step()
-
-        alpha_loss, alpha = self._alpha.update(log_probs, action_probs, batch_size) #Do the update in the actor in order to not recaluate probs
-
-        with torch.no_grad():
-            ent = -torch.bmm(action_probs.view(batch_size, 1, self._action_act_s), log_probs.view(batch_size, self._action_act_s, 1)).mean()
-            
-            return torch.stack((loss, ent, alpha_loss, alpha))
-        
-    def set_actual(self, q_func : QFunction) -> None:
-        """Will actually set the q_func if it was not set in the constructor"""
-        self._q_func = q_func
+        return torch.argmax(self.logits(state))
