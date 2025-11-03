@@ -38,15 +38,15 @@ class QFunction(nn.Module):
 
         description = 'Q1'
         LearningLogger().log_scalars({f'{description} Mean' : q1.mean(), 
-                            f'{description} Max' : q1.max(),
-                            f'{description} Min' : q1.min(),
-                            f'{description} Std' : q1.std()}, steps=LearningLogger().cur_step())
+                            f'{description} Max' : float(q1.max()),
+                            f'{description} Min' : float(q1.min()),
+                            f'{description} Std' : float(q1.std())}, steps=LearningLogger().cur_step())
         
         description = 'Q2'
         LearningLogger().log_scalars({f'{description} Mean' : q2.mean(), 
-                            f'{description} Max' : q2.max(),
-                            f'{description} Min' : q2.min(),
-                            f'{description} Std' : q2.std()}, steps=LearningLogger().cur_step())
+                            f'{description} Max' : float(q2.max()),
+                            f'{description} Min' : float(q2.min()),
+                            f'{description} Std' : float(q2.std())}, steps=LearningLogger().cur_step())
 
         return torch.min(self._q1(state), self._q2(state))
         
