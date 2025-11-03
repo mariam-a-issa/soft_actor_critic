@@ -108,7 +108,7 @@ class Actor(BaseNN):
         action = dist.sample()
         action_probs = dist.probs
         log_prob = F.log_softmax(logits, dim=-1)
-        return action, log_prob, action_probs
+        return action, action_probs, log_prob
     
     # We are not trying to do padding here
     # def _mask_func(self, batch_size : int, logits : Tensor, mask_num : float, num_devices : Tensor) -> Tensor:

@@ -15,11 +15,12 @@ def evaluate(env : EnvCompat, agent : Agent, num_eval : int, cur_epi : int, grap
         
         done = False
         state = ctr.format_state(env.reset()[0])
-        
+
         while not done:
             action = agent.evaluate(state)
             action_nas = ctr.format_action(action)
-            next_state, reward, done, _, _ = env.step(action_nas)
+            next_state, reward, done, step_limit_reached, _ = env.step(action_nas)
+            done = done or step_limit_reached
             next_state = ctr.format_state(next_state)
             if reward >0:
                 print(f'In eval {i} reward of {reward}')

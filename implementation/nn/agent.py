@@ -88,10 +88,18 @@ class MLPNNAgent(Agent):
                                          self._alpha(),
                                          self._config.discount,
                                          trans.done)
-        alpha_loss = sac.alpha_loss(cur_prob,
-                                    cur_log_prob,
-                                    self._alpha(),
-                                    self._alpha.sigmoid_target_entropy())
+        
+        if self._config.autotune:
+            alpha_loss = sac.alpha_loss(cur_prob,
+                                        cur_log_prob,
+                                        self._alpha(),
+                                        self._alpha.sigmoid_target_entropy())
+            self._optim_alpha.zero_grad()
+            alpha_loss.backward()
+            self._optim_alpha.step()
+            alpha_dict = {'Alpha Value' : self._alpha().item(), 'Alpha Loss' : alpha_loss.item()}
+        else:
+            alpha_dict = {}
         
         q1_loss = sac.mse(q1_dif)
         q2_loss = sac.mse(q2_dif)
@@ -107,27 +115,22 @@ class MLPNNAgent(Agent):
         grad_policy = self.calc_grad_norm([*self._policy.parameters()])
         grad_q_func = self.calc_grad_norm([*self._q_func.parameters()])
 
-        self._optim_alpha.zero_grad()
-        alpha_loss.backward()
         
         if self._config.grad_clip:
             utils.clip_grad_norm_([*self._q_func.parameters()], self._config.grad_clip)
         
         self._optim_policy.step()
         self._optim_critic.step()
-        self._optim_alpha.step()
         
 
         return {
             'QFunc1 Loss' : q1_loss.item(),
             'QFunc2 Loss' : q2_loss.item(),
             'Actor Loss' : policy_loss.item(),
-            'Alpha Loss' : alpha_loss.item(),
             'Entropy' : ent.item(),
-            'Alpha Value' : self._alpha().item(),
             'Grad of Policy' : grad_policy,
             'Unclipped Grad of Q Func' : grad_q_func
-        }
+        } | alpha_dict
     
     def target_param_update(self):
         self._q_func_target.update()

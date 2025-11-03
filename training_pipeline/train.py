@@ -42,8 +42,9 @@ def train(base_dir : str = LOG_DIR, #Root of all experiments
     try:
         while config.max_steps > steps:
             action_nas, action = _get_action(state=state, agent=agent, explore_steps=config.explore_steps, steps=steps, ctr=ctr)
-            next_state, reward, done, _, _= env.step(action_nas)
-            reward = _clamp(reward, -10, 10) / 5 #Quick fix
+            next_state, reward, done, step_limit_reached, _= env.step(action_nas)
+            finish = done or step_limit_reached
+            #reward = _clamp(reward, -10, 10) / 5 #Quick fix
             next_state = ctr.format_state(next_state)
             trans = Transition( #states will be tensors, actions will be tensor integers, the reward will be a float, and terminated will be a bool
                 state=state,
@@ -54,7 +55,6 @@ def train(base_dir : str = LOG_DIR, #Root of all experiments
             )
             
             epi_reward += reward
-            print(reward)
             agent.add_data(trans)
             
             if config.explore_steps <= steps:
@@ -62,7 +62,7 @@ def train(base_dir : str = LOG_DIR, #Root of all experiments
 
             steps += 1
 
-            if done:
+            if finish:
                 
                 LearningLogger().log_scalars({'Training reward' : epi_reward}, episodes=num_epi)
 
