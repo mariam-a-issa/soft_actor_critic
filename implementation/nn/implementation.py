@@ -37,13 +37,13 @@ class QFunction(nn.Module):
         q2 = self._q2(state)
 
         description = 'Q1'
-        LearningLogger().log_scalars({f'{description} Mean' : q1.mean(), 
+        LearningLogger().log_scalars({f'{description} Mean' : float(q1.mean()), 
                             f'{description} Max' : float(q1.max()),
                             f'{description} Min' : float(q1.min()),
                             f'{description} Std' : float(q1.std())}, steps=LearningLogger().cur_step())
         
         description = 'Q2'
-        LearningLogger().log_scalars({f'{description} Mean' : q2.mean(), 
+        LearningLogger().log_scalars({f'{description} Mean' : float(q2.mean()), 
                             f'{description} Max' : float(q2.max()),
                             f'{description} Min' : float(q2.min()),
                             f'{description} Std' : float(q2.std())}, steps=LearningLogger().cur_step())
