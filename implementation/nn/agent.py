@@ -66,6 +66,7 @@ class MLPNNAgent(Agent):
         
         with torch.no_grad():
             
+            q_target = self._q_func_target(trans.state)
             next_q_target = self._q_func_target(trans.next_state)
             _, next_prob, next_log_prob = self._policy(trans.next_state)
             
@@ -76,7 +77,7 @@ class MLPNNAgent(Agent):
                             cur_log_prob.view(batch_size, cur_action_size, 1)).mean()
         
         
-        policy_loss = sac.policy_loss(torch.min(cur_q1, cur_q2).detach(), cur_prob, cur_log_prob, self._alpha()).mean().squeeze()
+        policy_loss = sac.policy_loss(q_target, cur_prob, cur_log_prob, self._alpha()).mean().squeeze()
         q1_dif, q2_dif = sac.q_func_loss(cur_q1, 
                                          cur_q2,
                                          next_q_target,
@@ -118,9 +119,9 @@ class MLPNNAgent(Agent):
         
 
         return {
-            'Q1 Loss' : q1_loss.item(),
-            'Q2 Loss' : q2_loss.item(),
-            'Policy Loss' : policy_loss.item(),
+            'QFunc1 Loss' : q1_loss.item(),
+            'QFunc2 Loss' : q2_loss.item(),
+            'Actor Loss' : policy_loss.item(),
             'Alpha Loss' : alpha_loss.item(),
             'Entropy' : ent.item(),
             'Alpha Value' : self._alpha().item(),

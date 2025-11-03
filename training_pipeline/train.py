@@ -43,6 +43,7 @@ def train(base_dir : str = LOG_DIR, #Root of all experiments
         while config.max_steps > steps:
             action_nas, action = _get_action(state=state, agent=agent, explore_steps=config.explore_steps, steps=steps, ctr=ctr)
             next_state, reward, done, _, _= env.step(action_nas)
+            reward = _clamp(reward, -10, 10) #Quick fix
             next_state = ctr.format_state(next_state)
             trans = Transition( #states will be tensors, actions will be tensor integers, the reward will be a float, and terminated will be a bool
                 state=state,
@@ -53,7 +54,7 @@ def train(base_dir : str = LOG_DIR, #Root of all experiments
             )
             
             epi_reward += reward
-
+            print(reward)
             agent.add_data(trans)
             
             if config.explore_steps <= steps:
@@ -78,7 +79,10 @@ def train(base_dir : str = LOG_DIR, #Root of all experiments
         env.close()
         logger.close()
 
-
+def _clamp(x, lo, hi):
+    if lo > hi:
+        raise ValueError("lo must be <= hi")
+    return max(lo, min(x, hi))
 
 def _get_action(explore_steps : int, steps : int, agent : Agent, state : Tensor, ctr : Connector):
     if explore_steps <= steps:
