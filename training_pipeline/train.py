@@ -43,7 +43,7 @@ def train(base_dir : str = LOG_DIR, #Root of all experiments
         while config.max_steps > steps:
             action_nas, action = _get_action(state=state, agent=agent, explore_steps=config.explore_steps, steps=steps, ctr=ctr)
             next_state, reward, done, _, _= env.step(action_nas)
-            reward = _clamp(reward, -10, 10) #Quick fix
+            reward = _clamp(reward, -10, 10) / 5 #Quick fix
             next_state = ctr.format_state(next_state)
             trans = Transition( #states will be tensors, actions will be tensor integers, the reward will be a float, and terminated will be a bool
                 state=state,
