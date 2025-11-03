@@ -49,7 +49,7 @@ def train(base_dir : str = LOG_DIR, #Root of all experiments
                 action=action,
                 next_state=next_state,
                 reward=torch.tensor([reward], device=device, dtype=torch.float32),
-                done=torch.tensor([False], device=device, dtype=torch.float32) #Currently the agent never actually comes to a point where it makes a move that terminates. Therefor done should not be incorporated 
+                done=torch.tensor([done], device=device, dtype=torch.float32) #Currently the agent never actually comes to a point where it makes a move that terminates. Therefor done should not be incorporated 
             )
             
             epi_reward += reward

@@ -7,7 +7,7 @@ from torch.nn import functional as F
 from torch import nn
 
 from .architecture import BaseNN
-from utils.data_collection import Transition
+from utils import LearningLogger
 
 #Parameter update implementation from https://arxiv.org/abs/1910.07207
 
@@ -32,6 +32,22 @@ class QFunction(nn.Module):
 
     def forward(self, state : Tensor) -> Tensor:
         """Will give a Tensor where each index represents the q value for the corresponding action"""
+
+        q1 = self._q1(state)
+        q2 = self._q2(state)
+
+        description = 'Q1'
+        LearningLogger().log_scalars({f'{description} Mean' : q1.mean(), 
+                            f'{description} Max' : q1.max(),
+                            f'{description} Min' : q1.min(),
+                            f'{description} Std' : q1.std()}, steps=LearningLogger().cur_step())
+        
+        description = 'Q2'
+        LearningLogger().log_scalars({f'{description} Mean' : q2.mean(), 
+                            f'{description} Max' : q2.max(),
+                            f'{description} Min' : q2.min(),
+                            f'{description} Std' : q2.std()}, steps=LearningLogger().cur_step())
+
         return torch.min(self._q1(state), self._q2(state))
         
 class QFunctionTarget:
