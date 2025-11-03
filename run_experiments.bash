@@ -3,6 +3,7 @@ set -euo pipefail
 
 PYTHON_BIN=${PYTHON_BIN:-python3}
 TRAIN_SCRIPT=${TRAIN_SCRIPT:-train_script.py}
+NOTE_FILE=${NOTE_FILE:-note.txt}
 
 NAME=${NAME:-NN}
 SEEDS=${SEEDS:-"10,20,30"}
@@ -55,6 +56,8 @@ for cfg in "${CONFIGS[@]}"; do
   [[ -n "$cfg_slug"  ]] && parts+=("$cfg_slug")
   [[ -n "$name_slug" ]] && parts+=("$name_slug")
   run_name=$(IFS=-; echo "${parts[*]}")
+
+  echo "$run_name" >> "$NOTE_FILE"
 
   echo ">>> Running with config: $cfg (name: $run_name)"
   if [[ "$DRY_RUN" == "1" ]]; then
