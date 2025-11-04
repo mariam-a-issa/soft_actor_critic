@@ -5,7 +5,7 @@ PYTHON_BIN=${PYTHON_BIN:-python3}
 TRAIN_SCRIPT=${TRAIN_SCRIPT:-train_script.py}
 NOTE_FILE=${NOTE_FILE:-note.txt}
 
-NAME=${NAME:-NN}
+NAME=${NAME:-NN_step_limit_100}
 SEEDS=${SEEDS:-"10,20,30"}
 PROFILE=${PROFILE:-DacExperiments}
 CONFIG_DIR="configs"
