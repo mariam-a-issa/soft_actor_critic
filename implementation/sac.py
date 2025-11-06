@@ -2,6 +2,7 @@ import math
 
 import torch
 from torch import Tensor
+from torch.nn.functional import softmax
 
 class Alpha:
     """
@@ -94,10 +95,17 @@ def policy_loss(q_target: Tensor,
     Returns:
         Tensor: Policy loss (batch_size x 1).
     """
+
+    #Forward KL
+    actual_dist = softmax(q_target / alpha, dim=1)
+    return -torch.bmm(actual_dist.view(q_target.shape[0], 1, q_target.shape[1]), action_log_probs.view(q_target.shape[0], q_target.shape[1], 1)).view(q_target.shape[0], 1)
+
+    '''Reverse KL 
     batch_size, action_size = q_target.shape
     difference = alpha * action_log_probs - q_target
     loss = torch.bmm(action_probs.view(batch_size, 1, action_size), difference.view(batch_size, action_size, 1)).view(batch_size, 1)
     return loss
+    '''
 
 def q_func_loss(cur_q1: Tensor,
                 cur_q2: Tensor,
