@@ -1,15 +1,16 @@
 import gymnasium as gym
+from torch import device
 
 from implementation import Agent
 from utils import LearningLogger
 from .env import Connector, EnvCompat
 
-def evaluate(env : EnvCompat, agent : Agent, num_eval : int, cur_epi : int, graph : bool) -> None:
+def evaluate(env : EnvCompat, agent : Agent, num_eval : int, cur_epi : int, graph : bool, device : device) -> None:
     """Will evaluate the current agent on the environment for a given amount of episodes and then log the results"""
     
     epi_reward = 0
 
-    ctr = Connector(env)
+    ctr = Connector(env, device)
     
     for i in range(num_eval):
         

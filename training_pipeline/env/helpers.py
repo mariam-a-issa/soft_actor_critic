@@ -29,6 +29,4 @@ def setup_env(config : Config) -> torch.device:
 
     device_obj = torch.device(device)
 
-    torch.set_default_device(device_obj)
-
     return device_obj

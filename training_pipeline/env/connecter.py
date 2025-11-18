@@ -1,6 +1,6 @@
 from numpy.typing import NDArray
 import numpy as np
-from torch import Tensor, tensor
+from torch import Tensor, tensor, device
 from nasimemu import env_utils
 from torch_geometric.data import Data
 
@@ -10,9 +10,10 @@ from implementation import Agent
 
 class Connector():
 
-    def __init__(self, env : EnvCompat):
+    def __init__(self, env : EnvCompat, device : device):
         self._env = env #Used not to interact with the environment but so that information about the environment can be accessed
         self._graph = False
+        self._device = device
         pass
 
 
@@ -31,7 +32,7 @@ class Connector():
         #     return Data(tensor(s[0], dtype=float32), tensor(s[1], dtype=int64)) #0 is node feats and 1 is edge_index. Need to have the data types so that they match up with the rest of the model
         # return  tensor(s[:-1])
 
-        return tensor(state)
+        return tensor(state, device=self._device)
     
     def format_action(self, action : Tensor) -> "EnvAction":
         """Will format the action from the agent to the environments standard

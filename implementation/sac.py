@@ -16,7 +16,8 @@ class Alpha:
                  slope: float,
                  max_steps: int,
                  autotune: bool = False,
-                 alpha_value: float = None):
+                 alpha_value: float = None,
+                 device : torch.device = 'cpu'):
         """
         Initializes the Alpha class.
         
@@ -33,7 +34,7 @@ class Alpha:
         self._end = end
         self._midpoint = midpoint
         self._slope = slope
-        self._log_alpha = torch.nn.Parameter(torch.zeros(1, requires_grad=True))
+        self._log_alpha = torch.nn.Parameter(torch.zeros(1, requires_grad=True, device=device))
         self._max_steps = max_steps
         self._autotune = autotune
         self._alpha_value = alpha_value
@@ -47,7 +48,7 @@ class Alpha:
             Tensor: The current alpha value.
         """
         if not self._autotune:
-            return torch.tensor(self._alpha_value, device='cpu')
+            return torch.tensor(self._alpha_value)
         return self._log_alpha.exp()
     
     def sigmoid_target_entropy(self) -> float:
@@ -70,14 +71,6 @@ class Alpha:
         """
         return [self._log_alpha]
     
-    def to(self, device: torch.device) -> None:
-        """
-        Moves the alpha parameter to the specified device.
-        
-        Args:
-            device (torch.device): The target device.
-        """
-        self._log_alpha.to(device)
 
 def policy_loss(q_target: Tensor,
                 action_probs: Tensor,

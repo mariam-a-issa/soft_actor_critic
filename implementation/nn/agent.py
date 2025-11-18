@@ -6,7 +6,7 @@ from torch import Tensor
 import torch
 from torch.nn import utils
 
-from utils import MemoryBuffer, Transition, Config
+from utils import MemoryBuffer, Transition, Config, PrioritizedMemoryBuffer
 from .implementation import Actor, QFunction, QFunctionTarget
 from ..agents import Agent
 from .. import sac
@@ -15,6 +15,11 @@ class MLPNNAgent(Agent):
 
     def __init__(self, state_dim : int, action_dim : int, config : Config):
         super().__init__(config.target_update, config.update_frequency, config.learning_steps)
+
+        if config.gpu:
+            device = torch.device(f'cuda:{config.gpu_device}')
+        else:
+            device = torch.device('cpu')
     
         self._input_size = state_dim 
         
@@ -33,25 +38,32 @@ class MLPNNAgent(Agent):
                     slope=config.target_entropy_slope, 
                     max_steps=config.max_steps, 
                     autotune=config.autotune, 
-                    alpha_value=config.alpha_value)
+                    alpha_value=config.alpha_value,
+                    device=device)
             
         self._q_func_target.set_actual(self._q_func)
 
-        if config.gpu:
-            device = torch.device(f'cuda:{config.gpu_device}')
-        else:
-            device = torch.device('cpu')
         
-        for obj in [self._q_func_target, self._alpha, self._policy, self._q_func]:
+        for obj in [self._q_func_target, self._policy, self._q_func]:
             obj.to(device)
 
         self._optim_critic = torch.optim.Adam([*self._q_func.parameters()], lr=config.critic_lr)
         self._optim_policy = torch.optim.Adam([*self._policy.parameters()], lr=config.policy_lr)
         self._optim_alpha = torch.optim.Adam([self._alpha._log_alpha], lr = config.alpha_lr)
-            
-        self._memory = MemoryBuffer(config.buffer_size, config.sample_size, random)
+        
+        self._prioritized = config.prioritized_alpha is not None and config.prioritized_beta is not None
 
-        self._action_dim = torch.tensor(action_dim)
+        if self._prioritized:
+            self._memory = PrioritizedMemoryBuffer(buffer_length=config.buffer_size, 
+                                                   sample_size=config.sample_size, 
+                                                   alpha=config.prioritized_alpha,
+                                                   beta=config.prioritized_beta,
+                                                   device=device)
+        else:
+            self._memory = MemoryBuffer(buffer_length=config.buffer_size, 
+                                        sample_size=config.sample_size)
+
+        self._action_dim = torch.tensor(action_dim, device=device)
         self._config = config
         
     def param_update(self) -> dict[str : float]:
@@ -121,8 +133,10 @@ class MLPNNAgent(Agent):
         
         self._optim_policy.step()
         self._optim_critic.step()
-        
 
+        if self._prioritized:
+            self._memory.update_priority(trans, (q1_dif + q2_dif).detach().abs())
+        
         return {
             'QFunc1 Loss' : q1_loss.item(),
             'QFunc2 Loss' : q2_loss.item(),

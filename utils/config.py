@@ -89,6 +89,12 @@ class Config:
     update_frequency: int = 1
     """Frequency of policy updates relative to environment steps"""
 
+    prioritized_alpha : Optional[float] = .6
+    """Exponent α determines how much prioritization is used, with α = 0 corresponding to the uniform case"""
+
+    prioritized_beta : Optional[float] = .6
+    """Importance sampling negative exponent""" 
+
     ### Environment Parameters ###
     environment_info: Dict = field(default_factory=lambda: {
         'id': 'NASimEmu-v0',

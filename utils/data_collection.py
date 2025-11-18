@@ -1,9 +1,13 @@
 from collections import deque
 from typing import NamedTuple
 import random
+
 import torch
 from torch_geometric.data import Batch
 from torch import tensor, Tensor
+from tensordict import TensorDict
+from torchrl.data.replay_buffers import LazyTensorStorage, TensorDictPrioritizedReplayBuffer
+
 from .tensor_organization import group_to_boundaries_torch
 
 class Transition(NamedTuple):
@@ -16,23 +20,23 @@ class Transition(NamedTuple):
     num_devices : int = None
     num_devices_n : int = None,
     state_index : Tensor = None,
-    next_state_index : Tensor = None
+    next_state_index : Tensor = None,
+    priority_index : Tensor = None
 
 
 class MemoryBuffer:
     """A simple replay buffer"""
 
-    def __init__(self, buffer_length : int, sample_size : int, random : random) -> None:
+    def __init__(self, buffer_length : int, sample_size : int) -> None:
         self._memory = deque(maxlen=buffer_length)
         self._sample_size = sample_size
-        self._random = random
 
     def sample(self) -> Transition:
         """Will randomly sample a batch of transitions from the replay buffer"""
         if len(self._memory) <= self._sample_size:
             sample = self._memory #sample will be a list of transitions
         else:
-            sample = self._random.sample(self._memory, self._sample_size)
+            sample = random.sample(self._memory, self._sample_size)
 
         state, action, next_state, reward, done, _ , _, _, _ = zip(*sample) #unpack list and create tuples of each data point in transition
         
@@ -50,6 +54,67 @@ class MemoryBuffer:
     def add_data(self, trans : Transition) -> None:
         """Will add the data from the single transition into the buffer"""
         self._memory.append(trans)
+
+class PrioritizedMemoryBuffer():
+
+    def __init__(self, buffer_length : int, sample_size : int, alpha : float, beta : float, device : torch.device) -> None:
+        self._memory = TensorDictPrioritizedReplayBuffer(
+            alpha=alpha,         
+            beta=beta,           
+            eps=1e-6,           
+            priority_key="td_error",             
+            storage=LazyTensorStorage(max_size=buffer_length, device=device), 
+            batch_size=sample_size,
+        )
+
+        self._sample_size = sample_size
+        self._max_priority = torch.tensor(1.0, device=device)
+
+    def sample(self) -> Transition:
+        batch = self._memory.sample()
+
+        return Transition(
+            state=batch['state'],
+            action=batch['action'],
+            next_state=batch['next_state'],
+            reward=batch['reward'],
+            done=batch['done'],
+            priority_index=batch['index']
+        )
+
+    def add_data(self, trans : Transition) -> None:
+        #The transition contains tensors
+        td = TensorDict(
+            {'state' : trans.state,
+             'action' : trans.action,
+             'next_state' : trans.next_state,
+             'reward' : trans.reward,
+             'done' : trans.done,
+             'td_error' : self._max_priority
+            }
+        )
+
+        self._memory.add(td)
+
+    def update_priority(self, trans : Transition, error : Tensor) -> None:
+
+        self._max_priority = torch.max(self._max_priority, error.max())
+
+        td = TensorDict(
+            {'state' : trans.state,
+             'action' : trans.action,
+             'next_state' : trans.next_state,
+             'reward' : trans.reward,
+             'done' : trans.done,
+             'td_error' : error,
+             'index' : trans.priority_index
+            },
+            batch_size=trans.state.shape[0]
+        )
+
+
+        self._memory.update_tensordict_priority(td)
+
 
 
 class DynamicMemoryBuffer():

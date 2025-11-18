@@ -1,4 +1,4 @@
-from .data_collection import MemoryBuffer, Transition, DynamicMemoryBuffer, GraphMemoryBuffer
+from .data_collection import MemoryBuffer, Transition, DynamicMemoryBuffer, GraphMemoryBuffer, PrioritizedMemoryBuffer
 from .logging import LearningLogger
 from .tensor_organization import group_to_boundaries_torch
 from .config import Config
