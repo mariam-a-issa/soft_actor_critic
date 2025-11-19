@@ -18,10 +18,10 @@ _EPS = 1e-4 #Same variable in encoders
 class Alpha:
 
     def __init__(self, 
-                action_space_size : int,
-                value : float,  #Either the scaling coefficient or the actual alpha value
-                lr : float,
-                autotune : bool = True) -> None:
+                action_space_size: int,
+                value: float,  # Either the scaling coefficient or the actual alpha value
+                lr: float,
+                autotune: bool = True) -> None:
         
         self._target_ent = -value * torch.log(1 / torch.tensor(action_space_size))
         self._log_alpha = torch.zeros(1, requires_grad=True)
@@ -94,16 +94,16 @@ class QModel:
 
 class QFunction:
 
-    def __init__(self, hvec_dim : int, 
-                 action_dim : int,
-                 actor_encoder : RBFEncoder, 
-                 critic_encoder : EXPEncoder, 
-                 actor : 'Actor',
-                 target : 'TargetQFunction',
-                 alpha : Alpha,
-                 lr : float,
-                 discount : float,
-                 dynamic : bool) -> None:
+    def __init__(self, hvec_dim: int,
+                 action_dim: int,
+                 actor_encoder: RBFEncoder,
+                 critic_encoder: EXPEncoder,
+                 actor: 'Actor',
+                 target: 'TargetQFunction',
+                 alpha: Alpha,
+                 lr: float,
+                 discount: float,
+                 dynamic: bool) -> None:
         """Will create a Q function that has two q models"""
 
         if dynamic:
