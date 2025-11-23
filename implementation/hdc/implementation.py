@@ -12,52 +12,6 @@ from .encoders import RBFEncoder, EXPEncoder
 from utils.data_collection import Transition
 from utils import MAX_ROWS, NEG_INF 
 
-_EPS = 1e-4 #Same variable in encoders
-
-#Copied from nn implementation could there be another way to do this?
-class Alpha:
-
-    def __init__(self, 
-                action_space_size : int,
-                value : float,  #Either the scaling coefficient or the actual alpha value
-                lr : float,
-                autotune : bool = True) -> None:
-        
-        self._target_ent = -value * torch.log(1 / torch.tensor(action_space_size))
-        self._log_alpha = torch.zeros(1, requires_grad=True)
-        self._optim = optim.Adam([self._log_alpha], lr = lr, eps=_EPS)
-        self._action_s = action_space_size
-        
-        self._value = torch.tensor(value)
-        self._autotune = autotune
-
-    def __call__(self) -> Tensor:
-        """Will give the current alpha"""
-        if not self._autotune:
-            return self._value
-        return self._log_alpha.exp()
-    
-    def update(self, log_probs : Tensor, action_probs : Tensor, batch_size : int) -> tuple[Tensor, Tensor]:
-        """Will update according to equation 11"""
-        
-        if not self._autotune:
-            return torch.stack((torch.tensor(0), self._value))
-        
-        #Essentially batch dot product
-        loss = torch.bmm(action_probs.detach().view(batch_size, 1, self._action_s).detach(), 
-                        (-self._log_alpha.exp() * (log_probs + self._target_ent).detach()).view(batch_size, self._action_s, 1)).mean()
-
-        self._optim.zero_grad()
-        loss.backward()
-        self._optim.step()
-        
-        return loss, self().squeeze() #Squeeze so that it is just the value
-
-
-    def to(self, dev : torch.device) -> None:
-        self._target_ent.to(dev)
-        self._log_alpha.to(dev)
-
 class QModel:
 
     def __init__(self, hvec_dim : int, action_dim : int) -> None:
@@ -89,99 +43,28 @@ class QModel:
         return self._model
     
     def to(self, dev : torch.device) -> None:
-        self._model.to(dev)
+        self._model = self._model.to(dev)
     
 
 class QFunction:
 
-    def __init__(self, hvec_dim : int, 
-                 action_dim : int,
-                 actor_encoder : RBFEncoder, 
-                 critic_encoder : EXPEncoder, 
-                 actor : 'Actor',
-                 target : 'TargetQFunction',
-                 alpha : Alpha,
-                 lr : float,
-                 discount : float,
-                 dynamic : bool) -> None:
+    def __init__(self, hvec_dim : int, action_dim : int) -> None:
         """Will create a Q function that has two q models"""
-
-        if dynamic:
-            action_dim *= MAX_ROWS
         
         self._q1 = QModel(hvec_dim, action_dim)
         self._q2 = QModel(hvec_dim, action_dim)
 
-        self._a_encoder = actor_encoder
-        self._c_encoder = critic_encoder
 
-        self._actor = actor
-        self._target = target
-        self._lr = lr
-        self._discount = discount
-        self._alpha = alpha
-        self._output_dim = action_dim
-
-    def __call__(self, state) -> Tensor:
+    def __call__(self, state) -> tuple[Tensor, Tensor]:
         """State should be an encoded h_vect"""
-        return torch.min(self._q1(state), self._q2(state))
-    
-    def update(self, trans : Transition) -> tuple[Tensor, Tensor]:
-        """Use equation 10 to find loss and then bundle loss
-           Return the ce_state in order to not recalculate it and the loss"""
-        
-        batch_size = len(trans.state)
-
-        #Start of copied code from nn_implementation
-        with torch.no_grad():
-            ae_next_state = self._a_encoder(trans.next_state)
-            ce_next_state = self._c_encoder(trans.next_state)
-            ce_state = self._c_encoder(trans.state)
-
-            next_action_probs : Tensor #The actor will take care of setting the probabilites to zero for us
-            _, next_log_pi, next_action_probs = self._actor(ae_next_state, trans.num_devices_n, batch_size)
-            q_log_dif : Tensor = self._target(ce_next_state) - self._alpha() * next_log_pi
-
- 
-            #Essentially batch dot product
-            next_v = torch.bmm(next_action_probs.view(batch_size, 1, self._output_dim), 
-                               q_log_dif.view(batch_size, self._output_dim, 1)).view(batch_size, 1)
-
-            next_q = trans.reward + (1 - trans.done) * self._discount * next_v
-
-            q1 : Tensor = self._q1(ce_state)
-            q2 : Tensor = self._q2(ce_state)
-
-            #The action will be b x 1 where each element corresponds to index of action
-            #By doing gather, make q_a with shape b x 1 where the element is the q value for the performed action
-            #There should be no need to mask actions over here because actor set probabilites to zero and the batch should not have any illegal actions
-            
-            q1_a = q1.gather(1, trans.action)
-            q2_a = q2.gather(1, trans.action)
-            #Stop of copy
-
-            l1 : Tensor = next_q - q1_a
-            l2 : Tensor = next_q - q2_a
-
-            #Creates a matrix where each row is the hypervector that should be bundled with the model
-            matrix_l1 = l1 * ce_state * self._lr
-            matrix_l2 = l2 * ce_state * self._lr
-
-            #Index add will add the vector found at index i of matrix_l1 to index a_i of the model (returned by parameters()),
-            #where a_i is the value of trans.action at index i
-            #trans.action is a b x 1 column vector but needs to be row vector so squeeze
-            self._q1.parameters().index_add_(0, trans.action.squeeze(), matrix_l1)
-            self._q2.parameters().index_add_(0, trans.action.squeeze(), matrix_l2)
-        
-        return ce_state, torch.stack((1/2 * (l1 ** 2).mean(), 1/2 * (l2 ** 2).mean()))
-
+        return self._q1(state), self._q2(state)
 
     def to(self, device : torch.device) -> None:
         """Moves q function to device"""
         self._q1.to(device)
         self._q2.to(device)
 
-class TargetQFunction:
+class QFunctionTarget:
     
     def __init__(self,
                  tau : int,
@@ -218,93 +101,29 @@ class TargetQFunction:
 
 class Actor(nn.Module):
 
-    def __init__(self, 
-                 hvec_dim : int, 
-                 action_dim : int, 
-                 lr : int, 
-                 actor_encoder : RBFEncoder,
-                 alpha : Alpha, 
-                 target_q : TargetQFunction,
-                 dynamic : bool) -> None:
+    def __init__(self, hvec_dim : int, action_dim : int) -> None:
         super().__init__()
         
-        self._action_s = action_dim #Amount of actions per device
-        
-        if dynamic:
-            action_dim *= MAX_ROWS
-        
-        self._a_encoder = actor_encoder
-        
+        self._action_s = action_dim #Amount of actions per device    
         self._logits = nn.Linear(hvec_dim, action_dim, bias=False)
         self._logits.weight.data = torch.zeros((action_dim, hvec_dim))
-        
-        self._target = target_q
-        self._alpha = alpha
+    
 
-        self._optim = optim.Adam(self.parameters(), lr=lr, eps = _EPS)
-        
-        self._mask = dynamic
-        
-        self._ouput_dim = action_dim #Amount of total actions for the environment
-
-    def forward(self, state : Tensor, num_devices : Tensor = None, batch_size : int = None) -> tuple[Tensor]:
+    def forward(self, state : Tensor) -> tuple[Tensor, Tensor, Tensor]:
         """Will give the action, log_prob, action_probs of action
            If padding was done, then in the batch there would be states with various lengths which will need to be taken account of when doing"""
 
         logits : Tensor = self._logits(state)
-        
-        if num_devices is not None: #Basically when we need to pad
-            batch_size = state.shape[0] if batch_size is None else batch_size
-            logits = self._mask_func(batch_size, logits, NEG_INF, num_devices)
-            
         dist = Categorical(logits=logits)
         action = dist.sample()
         action_probs = dist.probs
         log_prob = F.log_softmax(logits, dim=-1)
         return action, log_prob, action_probs
     
-    def _mask_func(self, batch_size : int, logits : Tensor, mask_num : float, num_devices : Tensor) -> Tensor:
-        # Create an index tensor for each row, broadcast to match the size of matrix         # [1, 2, 3, ... i]
-        row_indices = torch.arange(logits.size(-1)).unsqueeze(0).expand(batch_size, -1)      # [1, 2, 3  ... i]
-        # Use broadcasting to create a boolean mask                                          # ^  
-        num_devices *= self._action_s                                                        # |
-        mask = row_indices < num_devices.unsqueeze(1)                                        # |_ Then create a mask of same dimensions as this matrix where True at indicies are less than action size per device times device 
-        return logits.masked_fill(~mask, float(mask_num))
-        
-    
     def evaluate(self, state : Tensor) -> Tensor:
         """Will return the best action for evaulation"""
         
-        return torch.argmax(self._mask_func(1, self._logits(state), '-inf', torch.tensor([1])))
-    
-    def update(self, trans : Transition, ce_state : Tensor) -> Tensor:
-        """Using according to equation 12 as well as gradient based and return the actors loss, actors antropy, alpha loss, and the current alpha"""
-        
-        #Same as the nn_implementation as it is doing gradient
-
-        batch_size = len(trans.state)
-        
-        ae_state = self._a_encoder(trans.state)
-        q_v = self._target(ce_state)
-
-        action_probs : Tensor; log_probs : Tensor; difference : Tensor ; loss : Tensor
-        _, log_probs, action_probs = self(ae_state, trans.num_devices, batch_size)
-        
-        difference = self._alpha() * log_probs - q_v
-
-        #Essentially batch dot product
-        loss = torch.bmm(action_probs.view(batch_size, 1, self._ouput_dim),  difference.view(batch_size, self._ouput_dim, 1)).mean()
-
-        self._optim.zero_grad()
-        loss.backward()
-        self._optim.step()
-
-        alpha_loss, alpha = self._alpha.update(log_probs, action_probs, batch_size) #Do the update in the actor in order to not recaluate probs
-
-        with torch.no_grad():
-            ent = -torch.bmm(action_probs.view(batch_size, 1, self._ouput_dim), log_probs.view(batch_size, self._ouput_dim, 1)).mean()
-
-            return torch.stack((loss, ent, alpha_loss, alpha))
+        return torch.argmax(self._logits(state))
         
     def save(self, file_name ='best_weights.pt') -> None:
         """Will save the model in the folder 'model' in the dir that the script was run in."""
