@@ -44,6 +44,7 @@ class HDCAgent(Agent):
             obj.to(device)
 
         self._optim_policy = torch.optim.Adam([*self._policy.parameters()], lr=config.policy_lr)
+        self._optim_critic = torch.optim.Adam([*self._q_func.parameters()], lr=config.critic_lr)
         self._optim_alpha = torch.optim.Adam([self._alpha._log_alpha], lr=config.alpha_lr)
         
         self._prioritized = config.prioritized_alpha is not None and config.prioritized_beta is not None
@@ -68,6 +69,7 @@ class HDCAgent(Agent):
             cur_p_emb = self._policy_enc(trans.state)
 
         _, cur_prob, cur_log_prob = self._policy(cur_p_emb)
+        cur_log_prob = cur_log_prob / torch.log(self._action_dim) #Normilize by the maximum possible entropy
 
         with torch.no_grad():
             cur_q_emb = self._q_func_enc(trans.state)
@@ -86,23 +88,24 @@ class HDCAgent(Agent):
                             cur_log_prob.view(batch_size, cur_action_size, 1)).mean()
             
             
-            cur_q1, cur_q2 = self._q_func(cur_q_emb)
-
-        _, cur_prob, cur_log_prob = self._policy(cur_p_emb)
-        cur_log_prob = cur_log_prob / torch.log(self._action_dim) #Normilize by the maximum possible entropy
+        cur_q1, cur_q2 = self._q_func(cur_q_emb)
+        q1_dif, q2_dif = sac.q_func_loss(cur_q1, 
+                                        cur_q2,
+                                        next_q_target,
+                                        trans.action.view(-1,1),
+                                        next_prob,
+                                        next_log_prob,
+                                        trans.reward,
+                                        self._alpha(),
+                                        self._config.discount,
+                                        trans.done)
+        
+        q1_loss = sac.mse(q1_dif)
+        q2_loss = sac.mse(q2_dif)
         
         policy_loss = sac.policy_loss(q_target, cur_prob, cur_log_prob, self._alpha()).mean().squeeze()
-        q1_dif, q2_dif = sac.q_func_loss(cur_q1, 
-                                         cur_q2,
-                                         next_q_target,
-                                         trans.action.view(-1,1),
-                                         next_prob,
-                                         next_log_prob,
-                                         trans.reward,
-                                         self._alpha(),
-                                         self._config.discount,
-                                         trans.done)
-        
+
+
         if self._config.autotune:
             alpha_loss = sac.alpha_loss(cur_prob,
                                         cur_log_prob,
@@ -115,23 +118,18 @@ class HDCAgent(Agent):
         else:
             alpha_dict = {}
         
-        
         self._optim_policy.zero_grad()
         policy_loss.backward()
         
-        with torch.no_grad():
-            matrix_l1 = q1_dif * cur_q_emb * self._config.critic_lr
-            matrix_l2 = q2_dif * cur_q_emb * self._config.critic_lr
-            #Index add will add the vector found at index i of matrix_l1 to index a_i of the model (returned by parameters()),
-            #where a_i is the value of trans.action at index i
-            #trans.action is a b x 1 column vector but needs to be row vector so squeeze
-            self._q_func._q1.parameters().index_add_(0, trans.action.squeeze(), matrix_l1)
-            self._q_func._q2.parameters().index_add_(0, trans.action.squeeze(), matrix_l2)
+        critic_loss = q1_loss + q2_loss
         
+        self._optim_critic.zero_grad()
+        critic_loss.backward()
         
         grad_policy = self.calc_grad_norm([*self._policy.parameters()])
 
         self._optim_policy.step()
+        self._optim_critic.step()
 
         if self._prioritized:
             self._memory.update_priority(trans, (q1_dif + q2_dif).detach().abs())

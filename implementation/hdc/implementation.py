@@ -3,27 +3,25 @@ from pathlib import Path
 import os
 import math
 
-from torch import nn, Tensor, optim
+from torch import nn, Tensor
 import torch
 from torch.distributions import Categorical
 import torch.nn.functional as F 
 
-from .encoders import RBFEncoder, EXPEncoder
-from utils.data_collection import Transition
-from utils import MAX_ROWS, NEG_INF 
+from utils import LearningLogger
 
-class QModel:
+class QModel(nn.Module):
 
     def __init__(self, hvec_dim : int, action_dim : int) -> None:
         """Will create a model that is a matrix that contains a hypervector for each action"""
+        super().__init__()
         upper_bound = 1 / math.sqrt(hvec_dim)
         lower_bound = -upper_bound
         
         #Using the same initilzation as the torch.nn.Linear 
         #https://github.com/pytorch/pytorch/blob/main/torch/nn/modules/linear.py#L106-L108
 
-        self._model = (upper_bound - lower_bound) * torch.rand(action_dim, hvec_dim, dtype=torch.cfloat) + lower_bound
-        self._model.requires_grad_(False)
+        self._model = nn.Parameter((upper_bound - lower_bound) * torch.rand(action_dim, hvec_dim, dtype=torch.cfloat) + lower_bound, requires_grad=True)
         self._hdvec_dim = hvec_dim
         self._action_dim = action_dim
 
@@ -39,17 +37,12 @@ class QModel:
         with torch.no_grad():
             return torch.real((torch.conj(self._model) @ state.unsqueeze(dim = 2)).squeeze() / self._hdvec_dim).view(state.shape[0], self._action_dim)
     
-    def parameters(self) -> Tensor:
-        return self._model
-    
-    def to(self, dev : torch.device) -> None:
-        self._model = self._model.to(dev)
-    
 
-class QFunction:
+class QFunction(nn.Module):
 
     def __init__(self, hvec_dim : int, action_dim : int) -> None:
         """Will create a Q function that has two q models"""
+        super().__init__()
         
         self._q1 = QModel(hvec_dim, action_dim)
         self._q2 = QModel(hvec_dim, action_dim)
@@ -57,12 +50,24 @@ class QFunction:
 
     def __call__(self, state) -> tuple[Tensor, Tensor]:
         """State should be an encoded h_vect"""
+        q1 = self._q1(state)
+        q2 = self._q2(state)
+
+        description = 'Q1'
+        LearningLogger().log_scalars({f'{description} Mean' : float(q1.mean()), 
+                            f'{description} Max' : float(q1.max()),
+                            f'{description} Min' : float(q1.min()),
+                            f'{description} Std' : float(q1.std())}, steps=LearningLogger().cur_step())
+        
+        description = 'Q2'
+        LearningLogger().log_scalars({f'{description} Mean' : float(q2.mean()), 
+                            f'{description} Max' : float(q2.max()),
+                            f'{description} Min' : float(q2.min()),
+                            f'{description} Std' : float(q2.std())}, steps=LearningLogger().cur_step())
+
+
         return self._q1(state), self._q2(state)
 
-    def to(self, device : torch.device) -> None:
-        """Moves q function to device"""
-        self._q1.to(device)
-        self._q2.to(device)
 
 class QFunctionTarget:
     
@@ -118,7 +123,7 @@ class Actor(nn.Module):
         action = dist.sample()
         action_probs = dist.probs
         log_prob = F.log_softmax(logits, dim=-1)
-        return action, log_prob, action_probs
+        return action, action_probs, log_prob
     
     def evaluate(self, state : Tensor) -> Tensor:
         """Will return the best action for evaulation"""
