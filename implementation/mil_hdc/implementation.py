@@ -81,9 +81,9 @@ class Encoder:
         return encoded_nodes, batch_index
     
     def to(self, device : torch.device) -> None:
-        self._feat_s_hdvec.to(device)
-        self._pos_s_hdvcec.to(device)
-        self._pos_bias.to(device)
+        self._feat_s_hdvec = self._feat_s_hdvec.to(device)
+        self._pos_s_hdvcec = self._pos_s_hdvcec.to(device)
+        self._pos_bias = self._pos_bias.to(device)
     
     
 class Actor(nn.Module):

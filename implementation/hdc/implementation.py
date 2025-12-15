@@ -21,7 +21,7 @@ class QModel(nn.Module):
         #Using the same initilzation as the torch.nn.Linear 
         #https://github.com/pytorch/pytorch/blob/main/torch/nn/modules/linear.py#L106-L108
 
-        self._model = nn.Parameter((upper_bound - lower_bound) * torch.rand(action_dim, hvec_dim, dtype=torch.cfloat) + lower_bound, requires_grad=True)
+        self._model = nn.Parameter((upper_bound - lower_bound) * torch.rand(action_dim, hvec_dim, dtype=torch.cfloat) + lower_bound, requires_grad=False)
         self._hdvec_dim = hvec_dim
         self._action_dim = action_dim
 

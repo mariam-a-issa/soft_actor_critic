@@ -10,11 +10,13 @@ from training_pipeline import train
 
 OTHER_HPARAMS = { #Just the default params that may be different than the ones in the training file
     'environment_info' : {'id' : 'nasim:TinyPO-v0', 'flat_actions' : True, 'flat_obs' : True},
-    'type_agent' : 'nn',
+    'type_agent' : 'hdc',
     'wandb' : False,
     'tensorboard' : False,
     'g_drive' : False,
-    'max_steps' : 20000,
+    'max_steps' : 80000,
+    'critic_lr' : 3e-3,
+    'policy_lr' : 3e-3
 }
 
 def train_hyper_param():

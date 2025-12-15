@@ -99,9 +99,19 @@ class HDCAgent(Agent):
                                         self._alpha(),
                                         self._config.discount,
                                         trans.done)
-        
-        q1_loss = sac.mse(q1_dif)
-        q2_loss = sac.mse(q2_dif)
+
+        with torch.no_grad():
+            matrix_l1 = q1_dif * cur_q_emb * self._config.critic_lr
+            matrix_l2 = q2_dif * cur_q_emb * self._config.critic_lr
+            
+            q1_params : Tensor
+            q2_params : Tensor
+            q1_params, q2_params = self._q_func.parameters()
+
+            #Need to mod due to only a single model but multiple devices
+            q1_params.index_add_(0, trans.action.squeeze(), matrix_l1)
+            q2_params.index_add_(0, trans.action.squeeze(), matrix_l2)
+
         
         policy_loss = sac.policy_loss(q_target, cur_prob, cur_log_prob, self._alpha()).mean().squeeze()
 
@@ -120,16 +130,8 @@ class HDCAgent(Agent):
         
         self._optim_policy.zero_grad()
         policy_loss.backward()
-        
-        critic_loss = q1_loss + q2_loss
-        
-        self._optim_critic.zero_grad()
-        critic_loss.backward()
-        
         grad_policy = self.calc_grad_norm([*self._policy.parameters()])
-
         self._optim_policy.step()
-        self._optim_critic.step()
 
         if self._prioritized:
             self._memory.update_priority(trans, (q1_dif + q2_dif).detach().abs())
