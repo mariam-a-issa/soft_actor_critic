@@ -76,7 +76,7 @@ class Encoder:
         grouped_products = permute_rows_by_shifts(grouped_products, torch.ones(grouped_products.shape[0], dtype=torch.int64))
         
         #Bind total state and each node and normalize
-        encoded_nodes = encoded_nodes * grouped_products
+        encoded_nodes = encoded_nodes + grouped_products
         
         return encoded_nodes, batch_index
     
