@@ -37,21 +37,21 @@ class MILHDCAgent(Agent):
                             autotune=config.autotune, 
                             alpha_value=config.alpha_value)
         
-        self._policy_optim = optim.Adam(self._policy.parameters(), lr=config.policy_lr)
-        self._alpha_optim = optim.Adam(self._alpha.parameters(), lr=config.alpha_lr)
-        
-        self._action_dim = action_dim
-        self._config = config
-
         if config.gpu:
             device = torch.device(f'cuda:{config.gpu_device}')
         else:
             device = torch.device('cpu')
 
+        self._device = device
+
         for obj in [self._embed, self._q_func, self._q_target, self._policy, self._alpha]:
             obj.to(device)
-
-        self._device = device
+        
+        self._policy_optim = optim.Adam(self._policy.parameters(), lr=config.policy_lr)
+        self._alpha_optim = optim.Adam(self._alpha.parameters(), lr=config.alpha_lr)
+        
+        self._action_dim = action_dim
+        self._config = config
         
     def param_update(self) -> dict[str : float]:
         trans = self._memory.sample()
