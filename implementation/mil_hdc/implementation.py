@@ -255,10 +255,10 @@ class QModel():
         #action_q += ((segment_coo(device_q[:,1], batch_index, reduce='sum')[batch_index]- device_q[:, 1]) / (scaler - 1 + EPS)).view(-1,1) #Need EPS so that I am not dividing by zero when there is no other device. This will still end up being zero since the left hand side will be zero
         
         if description:
-            LearningLogger().log_scalars({f'{description} Mean' : action_q.mean(), 
-                                      f'{description} Max' : action_q.max(),
-                                      f'{description} Min' : action_q.min(),
-                                      f'{description} Std' : action_q.std()}, steps=LearningLogger().cur_step())
+            LearningLogger().log_scalars({f'{description} Mean' : action_q.mean().cpu(), 
+                                      f'{description} Max' : action_q.max().cpu(),
+                                      f'{description} Min' : action_q.min().cpu(),
+                                      f'{description} Std' : action_q.std().cpu()}, steps=LearningLogger().cur_step())
             
         return reshape(action_q, batch_index, filler_val=0)
     
