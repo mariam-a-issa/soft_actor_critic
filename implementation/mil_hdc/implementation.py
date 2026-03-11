@@ -130,8 +130,8 @@ class Actor(nn.Module):
         # device_select = torch.real((permuted_d_model @ embedded_state[batch_index].unsqueeze(-1)).view(BM, 1)) / self._dim
         # action_select = torch.real((permuted_a_model @ embedded_state[batch_index].unsqueeze(-1)).view(BM, self._action_dim)) / self._dim
         #TODO may need to not normalize
-        action_select = torch.real(self._action(torch.conj(embedded_state))) / self._dim
-        device_select = torch.real(self._device(torch.conj(embedded_state))) / self._dim
+        action_select = torch.real(self._action(torch.conj(embedded_state))) / math.sqrt(self._dim)
+        device_select = torch.real(self._device(torch.conj(embedded_state))) / math.sqrt(self._dim)
         
         b = batch_index.unique().numel()
         if b == 1:
