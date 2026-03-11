@@ -126,9 +126,9 @@ class MILHDCAgent(Agent):
             alpha_loss = torch.tensor(0, device='cpu')
         
         return {
-            'Q1 Loss' : q1_loss.item(),
-            'Q2 Loss' : q2_loss.item(),
-            'Policy Loss' : policy_loss.item(),
+            'QFunc1 Loss' : q1_loss.item(),
+            'QFunc2 Loss' : q2_loss.item(),
+            'Actor Loss' : policy_loss.item(),
             'Alpha Loss' : alpha_loss.item(),
             'Entropy' : ent.item(),
             'Alpha Value' : self._alpha().item(),

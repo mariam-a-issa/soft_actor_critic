@@ -100,7 +100,7 @@ def policy_loss(q_target: Tensor,
     """
 
     #Forward KL
-    actual_dist = softmax(q_target / alpha, dim=1)
+    actual_dist = softmax(q_target - alpha * action_log_probs, dim=1)
     return -torch.bmm(actual_dist.view(q_target.shape[0], 1, q_target.shape[1]), action_log_probs.view(q_target.shape[0], q_target.shape[1], 1)).view(q_target.shape[0], 1)
 
     '''Reverse KL 
