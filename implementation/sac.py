@@ -3,8 +3,9 @@ import math
 import torch
 from torch import Tensor
 from torch.nn.functional import softmax
+from torch import nn
 
-class Alpha:
+class Alpha(nn.Module):
     """
     Implements an alpha parameter for entropy regularization in reinforcement learning, with optional auto-tuning.
     """
@@ -30,6 +31,7 @@ class Alpha:
             autotune (bool, optional): If True, start is used as the initial alpha value. Defaults to False.
             alpha_value (float, optional): Fixed alpha value if autotune is False. Defaults to None.
         """
+        super().__init__()
         self._start = start
         self._end = end
         self._midpoint = midpoint
@@ -76,8 +78,8 @@ class Alpha:
         """
         Moves the alpha parameter to the device
         """
-        self._log_alpha = self._log_alpha.to(device=device)
         self._device = device
+        return super().to(device)
     
 
 def policy_loss(q_target: Tensor,
