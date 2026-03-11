@@ -31,6 +31,7 @@ class Encoder:
         self._pos_bias = 2 * math.pi * torch.rand(dim, dtype=torch.float32)
         self._dim = dim
         self._pos_enc_dim = pos_enc_dim
+        self._device = self._feat_s_hdvec.device
         
         
     def __call__(self, nodes : Tensor, state_index : Tensor) -> tuple[Tensor, Tensor]:
@@ -55,8 +56,8 @@ class Encoder:
         # write.scatter_reduce_(dim=0, src=devices_permuted, index=batch_index.view(-1, 1).expand(-1 , self._dim), reduce='prod')
         
         #Generate helper vectors
-        index_vector = generate_counting_tensor(state_index)
-        batch_index = generate_batch_index(state_index)
+        index_vector = generate_counting_tensor(state_index).to(device=self._device)
+        batch_index = generate_batch_index(state_index).to(device=self._device)
         number_nodes = torch.diff(state_index)[batch_index].view(-1, 1)
         
         #Encode the nodes
@@ -67,15 +68,15 @@ class Encoder:
         encoded_nodes = hd_feats * hd_pos
         
         # #Bundle them total state nodes together and normalize
-        grouped_products : Tensor = torch.zeros((batch_index.max() + 1, encoded_nodes.shape[1]), dtype=encoded_nodes.dtype)
+        grouped_products : Tensor = torch.zeros((batch_index.max() + 1, encoded_nodes.shape[1]), dtype=encoded_nodes.dtype, device=self._device)
         grouped_products.index_add_(0, batch_index, encoded_nodes)
         grouped_products = grouped_products[batch_index]
         grouped_products /= number_nodes
         
         #Permute total state by one
-        grouped_products = permute_rows_by_shifts(grouped_products, torch.ones(grouped_products.shape[0], dtype=torch.int64))
+        grouped_products = permute_rows_by_shifts(grouped_products, torch.ones(grouped_products.shape[0], dtype=torch.int64, device=self._device))
         
-        #Bind total state and each node and normalize
+        #Bundle total state and each node and normalize
         encoded_nodes = encoded_nodes + grouped_products
         
         return encoded_nodes, batch_index
@@ -84,6 +85,7 @@ class Encoder:
         self._feat_s_hdvec = self._feat_s_hdvec.to(device)
         self._pos_s_hdvcec = self._pos_s_hdvcec.to(device)
         self._pos_bias = self._pos_bias.to(device)
+        self._device = device
     
     
 class Actor(nn.Module):
@@ -191,11 +193,13 @@ class QModel():
         #Using the same initilzation as the torch.nn.Linear 
         #https://github.com/pytorch/pytorch/blob/main/torch/nn/modules/linear.py#L106-L108
 
-        self._action = (upper_bound - lower_bound) * torch.rand(dim, action_dim, dtype=torch.cfloat) + lower_bound
-        self._action.requires_grad_(False)
-        self._device = torch.zeros(dim, 2, dtype=torch.cfloat, requires_grad=False)
+        self._action_m = (upper_bound - lower_bound) * torch.rand(dim, action_dim, dtype=torch.cfloat) + lower_bound
+        self._action_m.requires_grad_(False)
+        self._device_m = torch.zeros(dim, 2, dtype=torch.cfloat, requires_grad=False)
         
         self._dim = dim
+
+        self._device = self._action_m.device
         
     def _values(self, embedded_state : Tensor, batch_index : Tensor, state_index : Tensor) -> tuple[Tensor, Tensor]:
         """Will get the Q values for the specific actions and then for the device
@@ -217,8 +221,8 @@ class QModel():
         #                                                          counting)
         
 
-        action_q = torch.real(torch.conj(embedded_state) @ self._action) / self._dim
-        device_q = torch.real(torch.conj(embedded_state) @ self._device) /self._dim
+        action_q = torch.real(torch.conj(embedded_state) @ self._action_m) / self._dim
+        device_q = torch.real(torch.conj(embedded_state) @ self._device_m) /self._dim
 
         #num_devices = torch.diff(state_index)
         #action_q /= num_devices.unsqueeze(dim=-1)[batch_index] #Need to normalize q value as we are using bundeling for the encoding
@@ -264,11 +268,12 @@ class QModel():
         Returns:
             Tensor: Actions model
         """
-        return self._action.T
+        return self._action_m.T
     
     def to(self, device : torch.device)-> None:
-        self._action.to(device)
-        self._device.to(device)
+        self._action_m = self._action_m.to(device)
+        self._device_m = self._device_m.to(device)
+        self._device = device
 
 class QFunction():
     
@@ -277,6 +282,8 @@ class QFunction():
                  action_dim : int):
         self._q1 = QModel(embed_dim, action_dim)
         self._q2 = QModel(embed_dim, action_dim)
+
+        self._device = self._q1._device_m
         
     def __call__(self, embed_state : Tensor, batch_index : Tensor, state_index : Tensor) -> tuple[Tensor, Tensor]:
         q1 = self._q1(embed_state, batch_index, state_index, description='Q1')
@@ -296,6 +303,7 @@ class QFunction():
     def to(self, device : torch.device)->None:
         self._q1.to(device)
         self._q2.to(device)
+        self._device = device
 
 class QFunctionTarget():
     
@@ -303,9 +311,11 @@ class QFunctionTarget():
         self._target_q_function = deepcopy(qfunction)
         self._actual_q_function = qfunction
         self._tau = tau
+
+        self._device = self._target_q_function._device
         
     def __call__(self, *args, **kwds):
-        return torch.min(torch.stack(self._actual_q_function(*args, **kwds), dim=2), dim=2)[0]
+        return torch.min(torch.stack(self._target_q_function(*args, **kwds), dim=2), dim=2)[0]
     
     def update(self):
         """Will do polyak averaging to each model in the target"""
@@ -316,3 +326,4 @@ class QFunctionTarget():
     
     def to(self, device : torch.device):
         self._target_q_function.to(device)
+        self._device = device

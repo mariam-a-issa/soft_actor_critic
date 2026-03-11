@@ -38,7 +38,7 @@ class MemoryBuffer:
         else:
             sample = random.sample(self._memory, self._sample_size)
 
-        state, action, next_state, reward, done, _ , _, _, _ = zip(*sample) #unpack list and create tuples of each data point in transition
+        state, action, next_state, reward, done, _ , _, _, _, _ = zip(*sample) #unpack list and create tuples of each data point in transition
         
         action = torch.stack(action, dim = 0)
         reward = torch.stack(reward, dim =0)
@@ -130,10 +130,10 @@ class DynamicMemoryBuffer():
         else:
             sample = random.sample(self._memory, self._sample_size)
 
-        state, action, next_state, reward, done, _, _, _, _ = zip(*sample)
+        state, action, next_state, reward, done, _, _, _, _, _ = zip(*sample)
         
-        state_index = torch.tensor([0]+[state[i - 1].shape[0] for i in range(1, len(state))]+ [state[-1].shape[0]])
-        next_state_index = torch.tensor([0]+[next_state[i - 1].shape[0] for i in range(1, len(next_state))]+ [next_state[-1].shape[0]])
+        state_index = torch.tensor([0]+[state[i - 1].shape[0] for i in range(1, len(state))]+ [state[-1].shape[0]], device=state[0].device)
+        next_state_index = torch.tensor([0]+[next_state[i - 1].shape[0] for i in range(1, len(next_state))]+ [next_state[-1].shape[0]], device=state[0].device)
         
         state_index = torch.cumsum(state_index, dim=0)
         next_state_index = torch.cumsum(next_state_index, dim = 0)
@@ -164,7 +164,7 @@ class GraphMemoryBuffer():
         else:
             sample = random.sample(self._memory, self._sample_size)
             
-        state, action, next_state, reward, done, _, _, _, _ = zip(*sample) #In this case state and next_state are tuples of Data
+        state, action, next_state, reward, done, _, _, _, _, _ = zip(*sample) #In this case state and next_state are tuples of Data
         cur_batch = Batch.from_data_list(state)
         next_batch = Batch.from_data_list(next_state)
         

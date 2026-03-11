@@ -14,25 +14,26 @@ def reshape(values : Tensor, batch_index : Tensor, filler_val : float = -1e8) ->
     Returns:
         Tensor: bxma
     """
+    device = values.device
     a = values.shape[1]
     b = batch_index.unique().numel()
     max_d = torch.bincount(batch_index).max().item()
 
     # Step 2: Compute positions within each group
-    device_counts = torch.zeros(b, dtype=torch.long).scatter_add_(
-        0, batch_index, torch.ones_like(batch_index)
+    device_counts = torch.zeros(b, dtype=torch.long, device=device).scatter_add_(
+        0, batch_index, torch.ones_like(batch_index, device=device)
     )
     device_offsets = torch.cumsum(
-        torch.cat([torch.tensor([0], dtype=torch.long), device_counts[:-1]]), dim=0
+        torch.cat([torch.tensor([0], dtype=torch.long, device=device), device_counts[:-1]]), dim=0
     )
 
-    device_indices = (torch.arange(len(batch_index)) - device_offsets[batch_index]).long()
+    device_indices = (torch.arange(len(batch_index), device=device) - device_offsets[batch_index]).long()
 
     # Step 3: Prepare an output tensor with zeros
-    output : Tensor = torch.zeros((b, max_d * a), dtype=values.dtype) + filler_val
+    output : Tensor = torch.zeros((b, max_d * a), dtype=values.dtype, device=device) + filler_val
     # Step 4: Place actions into the reshaped matrix
     row_indices = batch_index
-    col_indices = (device_indices[:, None] * a + torch.arange(a)).flatten()
+    col_indices = (device_indices[:, None] * a + torch.arange(a, device=device)).flatten()
 
     return output.index_put_((row_indices.repeat_interleave(a), col_indices), values.flatten())
 
@@ -40,13 +41,15 @@ def pad(state : Tensor | list[Tensor], input_size : int) -> Tensor:
     """Will pad the state tensor correctly. Note that here we consider either a single matrix or a batch list of matrices. 
        Either return a single vector representing the state or a matrix representing the batch of states"""
     if isinstance(state, Tensor):
-        padded_state = torch.zeros(input_size)
+        device = state.device
+        padded_state = torch.zeros(input_size, device=device)
         state = state.flatten()
         padded_state[:len(state)] = state
         return padded_state
     elif isinstance(state, list):
+        device = state[0].device
         state = [s.flatten() for s in state] #Slow but need to do it here. Maybe move to data collection but then becomes tricky
-        padded_state = torch.zeros(input_size) #Need to pad first one to desired length
+        padded_state = torch.zeros(input_size, device=device) #Need to pad first one to desired length
         padded_state[:len(state[0])] = state[0]
         state[0] = padded_state
         return torch.nn.utils.rnn.pad_sequence(state, batch_first=True, padding_value=0)
@@ -62,10 +65,11 @@ def generate_counting_tensor(ranges : Tensor) -> Tensor:
     Returns:
         Tensor: The expanded ranges
     """
+    device = ranges.device
     diffs = ranges[1:] - ranges[:-1]  # Compute step sizes
     # Generate counting sequences using broadcasting
     max_len = diffs.max().item()  # Find the longest sub-range
-    range_tensor = torch.arange(max_len).expand(len(diffs), max_len)  # Expand a base range
+    range_tensor = torch.arange(max_len, device=device).expand(len(diffs), max_len)  # Expand a base range
     mask = range_tensor < diffs.unsqueeze(1)  # Mask out values beyond each range length
     return range_tensor[mask]
 
@@ -79,8 +83,9 @@ def permute_rows_by_shifts(matrix : Tensor, shifts : Tensor) -> Tensor:
     Returns:
         Tensor: The matrix whos rows are shifted
     """
+    device = matrix.device
     N, M = matrix.shape  # Get matrix dimensions
-    indices = torch.arange(M).view(1, M).expand(N, M)  # Create base indices for rows
+    indices = torch.arange(M, device=device).view(1, M).expand(N, M)  # Create base indices for rows
     shifted_indices = (indices - shifts.unsqueeze(1)) % M  # Apply shifts (negative for right shift)
 
     return matrix.gather(1, shifted_indices)  # Gather new indices
@@ -96,17 +101,18 @@ def permute_rows_by_shifts_matrix(matrix : Tensor, shifts: Tensor):
     Returns:
     - A new tensor with rows permuted accordingly.
     """
+    device = matrix.device
     N, B, D = matrix.shape  # Get matrix dimensions
-    indices = torch.arange(D).view(1, D).expand(N, D)  # Create base indices for last dimension
+    indices = torch.arange(D, device=device).view(1, D).expand(N, D)  # Create base indices for last dimension
     shifted_indices : Tensor = (indices - shifts.unsqueeze(1)) % D  # Apply shifts (negative for right shift)
 
     # Expand indices to match (N, B, D) for proper broadcasting
     shifted_indices = shifted_indices.unsqueeze(1).expand(-1, B, -1)
 
     # Generate batch indices to maintain correct selection
-    batch_indices = torch.arange(N).view(N, 1, 1).expand(-1, B, -1)
+    batch_indices = torch.arange(N, device=device).view(N, 1, 1).expand(-1, B, -1)
     
-    return matrix[batch_indices, torch.arange(B).view(1, B, 1).expand(N, -1, -1), shifted_indices]
+    return matrix[batch_indices, torch.arange(B, device=device).view(1, B, 1).expand(N, -1, -1), shifted_indices]
 
 def generate_batch_index(state_index : Tensor):
     """Exapnds the ranges so that each subsequent range contains a subsuquent number repeated by the length of the range
@@ -120,7 +126,7 @@ def generate_batch_index(state_index : Tensor):
     diffs = state_index[1:] - state_index[:-1]  # Compute segment sizes
 
     # Create repeated indices in a fully vectorized manner
-    batch_index = torch.arange(len(diffs)).repeat_interleave(diffs)
+    batch_index = torch.arange(len(diffs), device=state_index.device).repeat_interleave(diffs)
 
     return batch_index
 

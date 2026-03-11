@@ -107,7 +107,7 @@ class Config:
     
     ### Logging Parameters ###
     eval_frequency: int = 10
-    """Number of training steps between evaluations"""
+    """Number of training episodes between evaluations"""
     
     num_evals: int = 5
     """Number of evaluation episodes per evaluation cycle"""

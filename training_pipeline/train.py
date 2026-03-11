@@ -26,9 +26,9 @@ def train(base_dir : str = LOG_DIR, #Root of all experiments
     env.reset()
     device = setup_env(config)
 
-    ctr = Connector(env, device=device)
+    ctr = Connector(env, device=device, env_info=config.environment_info)
     
-    state_space, action_space = ctr.get_env_info()
+    action_space, state_space, env = ctr.get_env_info()
 
     agent = create_agent(node_dim=state_space,
                         action_dim=action_space,
@@ -38,7 +38,8 @@ def train(base_dir : str = LOG_DIR, #Root of all experiments
     num_epi = 0
     epi_reward = 0
     
-    state = ctr.format_state(env.reset()[0])
+    np_state = env.reset()[0]
+    state = ctr.format_state(np_state)
 
     if config.explore_steps < config.sample_size:
         config = config.with_updates(explore_steps=config.sample_size)
@@ -76,7 +77,8 @@ def train(base_dir : str = LOG_DIR, #Root of all experiments
                 if config.explore_steps <= steps:
                     num_epi += 1
                     if num_epi % config.eval_frequency == 0:
-                        evaluate(deepcopy(env), agent, config.num_evals, num_epi, config.graph, device) #Need to deepcopy so that we keep the environment the same when training or else the state the environment will be in will be different from the state that is in next_state
+                        eval_env = deepcopy(env)
+                        evaluate(eval_env, agent, config.num_evals, num_epi, Connector(eval_env,device, config.environment_info)) #Need to deepcopy so that we keep the environment the same when training or else the state the environment will be in will be different from the state that is in next_state
 
             state = next_state
     finally:
@@ -93,6 +95,6 @@ def _get_action(explore_steps : int, steps : int, agent : Agent, state : Tensor,
         action = agent.sample(state) 
         return ctr.format_action(action), action
     else:
-        _, action_space = ctr.get_env_info()
-        action = torch.tensor(random.randint(0, action_space-1)).view(-1)
+        action_space, _, _ = ctr.get_env_info()
+        action = torch.tensor(random.randint(0, action_space-1), device=ctr._device).view(-1)
         return ctr.format_action(action), action

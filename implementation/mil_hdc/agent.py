@@ -51,6 +51,7 @@ class MILHDCAgent(Agent):
         for obj in [self._embed, self._q_func, self._q_target, self._policy, self._alpha]:
             obj.to(device)
 
+        self._device = device
         
     def param_update(self) -> dict[str : float]:
         trans = self._memory.sample()
@@ -139,14 +140,14 @@ class MILHDCAgent(Agent):
 
     def sample(self, state : Tensor) -> Tensor:
         with torch.no_grad():
-            state_index = torch.tensor([0,state.shape[0]])
+            state_index = torch.tensor([0,state.shape[0]]).to(self._device)
             embed_state, batch_index = self._embed(state, state_index)
             action, _, _ = self._policy.sample_action(embed_state, batch_index, state_index)
             return action
         
     def evaluate(self, state : Tensor) -> Tensor:
         with torch.no_grad():
-            state_index = torch.tensor([0,state.shape[0]])
+            state_index = torch.tensor([0,state.shape[0]]).to(self._device)
             embed_state, batch_index = self._embed(state, state_index)
             action = self._policy.evaluate_action(embed_state, batch_index, state_index)
             return action

@@ -39,6 +39,7 @@ class Alpha:
         self._autotune = autotune
         self._alpha_value = alpha_value
         self._current_step = 0
+        self._device = device
         
     def __call__(self) -> Tensor:
         """
@@ -48,7 +49,7 @@ class Alpha:
             Tensor: The current alpha value.
         """
         if not self._autotune:
-            return torch.tensor(self._alpha_value)
+            return torch.tensor(self._alpha_value, device = self._device)
         return self._log_alpha.exp()
     
     def sigmoid_target_entropy(self) -> float:
@@ -70,6 +71,13 @@ class Alpha:
             list[Tensor]: A list containing the log alpha parameter.
         """
         return [self._log_alpha]
+    
+    def to(self, device : torch.device):
+        """
+        Moves the alpha parameter to the device
+        """
+        self._log_alpha = self._log_alpha.to(device=device)
+        self._device = device
     
 
 def policy_loss(q_target: Tensor,
